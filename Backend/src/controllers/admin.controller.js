@@ -1136,37 +1136,25 @@ export async function getRecentActivitiesByAdmin(req, res) {
       }),
       prisma.approvalHistory.findMany({
         where: {
-          approvalRequest: {
-            expense: {
-              companyId,
-            },
+          expense: {
+            companyId,
           },
         },
-        orderBy: { actedAt: "desc" },
+        orderBy: { actionAt: "desc" },
         take: 50,
-        select: {
-          id: true,
-          action: true,
-          actedAt: true,
-          comments: true,
-          approvalRequest: {
+        include: {
+          expense: {
             select: {
               id: true,
-              approverId: true,
-              expense: {
+              employee: {
                 select: {
-                  id: true,
-                  employee: {
-                    select: {
-                      firstName: true,
-                      lastName: true,
-                    },
-                  },
+                  firstName: true,
+                  lastName: true,
                 },
               },
             },
           },
-          actor: {
+          approver: {
             select: {
               firstName: true,
               lastName: true,
@@ -1218,16 +1206,16 @@ export async function getRecentActivitiesByAdmin(req, res) {
     });
 
     const approvalActivities = approvalHistories.map((history) => {
-      const employeeName = `${history.approvalRequest?.expense?.employee?.firstName || ""} ${history.approvalRequest?.expense?.employee?.lastName || ""}`.trim() || "Unknown";
-      const actorName = `${history.actor?.firstName || ""} ${history.actor?.lastName || ""}`.trim() || "Unknown";
+      const employeeName = `${history.expense?.employee?.firstName || ""} ${history.expense?.employee?.lastName || ""}`.trim() || "Unknown";
+      const actorName = `${history.approver?.firstName || ""} ${history.approver?.lastName || ""}`.trim() || "Unknown";
       const actionLower = String(history.action || "").toLowerCase();
       const statusType = actionLower === "approved" ? "success" : actionLower === "rejected" ? "error" : "default";
       
       return {
         actor: actorName,
-        action: `${actionLower} expense claim ${history.approvalRequest?.expense?.id} (${employeeName})`,
+        action: `${actionLower} expense claim ${history.expense?.id} (${employeeName})`,
         type: statusType,
-        at: history.actedAt,
+        at: history.actionAt,
       };
     });
 

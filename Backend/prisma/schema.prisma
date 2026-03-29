@@ -12,37 +12,348 @@ datasource db {
 }
 
 // ============================================
+// ENUMS
+// ============================================
+
+enum EmployeeRole {
+  ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+enum Designation {
+  FINANCE
+  DIRECTOR
+  CFO
+  HR
+  OPERATIONS
+  MANAGER
+  CUSTOM
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum CompanyStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+// ============================================
+// COMPANY & ORGANIZATION MODELS
+// ============================================
+
+model Company {
+  id              String        @id @default(cuid())
+  name            String
+  country         String
+  currency        String        // e.g., "USD", "INR", "EUR"
+  baseCurrency    String        // Default currency for the company
+  status          CompanyStatus @default(ACTIVE)
+  
+  // Relationships
+  employees       Employee[]
+  expenses        Expense[]
+  approvalRules   ApprovalRule[]
+  categories      ExpenseCategory[]
+  settings        CompanySettings?
+  
+  // Timestamps
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([status])
+}
+
+// ============================================
 // USER & AUTHENTICATION MODELS
 // ============================================
 
-model User {
-  id                  String      @id @default(cuid())
-  email               String      @unique
+model Employee {
+  id                  String          @id @default(cuid())
+  email               String
   password            String
   firstName           String
   lastName            String?
   
+  // Company relationship
+  companyId           String
+  company             Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
   // Profile info
   avatar              String?
   bio                 String?
-  jobTitle            String?
   department          String?
   
-  // Role & Status
-  role                String      @default("PARTICIPANT") // ADMIN, PARTICIPANT
-  status              String      @default("ACTIVE")      // ACTIVE, INACTIVE, SUSPENDED, BANNED
+  // Role & Designation
+  role                EmployeeRole    @default(EMPLOYEE)      // ADMIN, MANAGER, EMPLOYEE
+  designation         String          @default("EMPLOYEE")    // FINANCE, DIRECTOR, CFO, HR, etc.
+  
+  // Manager relationship (self-referential)
+  managerId           String?
+  manager             Employee?       @relation("ManagerRelation", fields: [managerId], references: [id], onDelete: SetNull)
+  subordinates        Employee[]      @relation("ManagerRelation")
+  
+  // Approval permissions
+  isManager           Boolean         @default(false)
+  isApprover          Boolean         @default(false)
+  approvalSequence    Int?
+  
+  // Status
+  isActive            Boolean         @default(true)
+  status              EmployeeStatus  @default(ACTIVE)
   
   // Refresh Token
   refreshToken        String?
   refreshTokenExpiry  DateTime?
   
+  // Relationships for approvals
+  submittedExpenses   Expense[]       @relation("SubmittedBy")
+  approvalRequests    ApprovalRequest[] @relation("ApproverFor")
+  approvalHistories   ApprovalHistory[] @relation("ApprovedBy")
+  
   // Timestamps
-  createdAt           DateTime    @default(now())
-  updatedAt           DateTime    @updatedAt
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
 
+  @@unique([email, companyId])  // Email unique per company
+  @@index([companyId])
   @@index([email])
   @@index([role])
+  @@index([designation])
+  @@index([managerId])
   @@index([status])
+}
+
+// ============================================
+// EXPENSE TRACKING MODELS
+// ============================================
+
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ExpenseCategory {
+  TRAVEL
+  MEALS
+  OFFICE_SUPPLIES
+  ACCOMMODATION
+  TRANSPORT
+  OTHER
+}
+
+model Expense {
+  id                    String        @id @default(cuid())
+  
+  // Company & Employee
+  companyId             String
+  company               Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  employeeId            String
+  employee              Employee      @relation("SubmittedBy", fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  // Expense details
+  amount                Decimal       @db.Decimal(10, 2)
+  currencyCode          String        // Original currency code
+  amountInBaseCurrency  Decimal       @db.Decimal(10, 2)  // Converted to company's base currency
+  category              ExpenseCategory
+  description           String
+  date                  DateTime      // When expense occurred
+  
+  // Receipt & OCR
+  receiptUrl            String?
+  ocrData               Json?         // Extracted data from OCR
+  
+  // Status
+  status                ExpenseStatus @default(PENDING)
+  
+  // Relationships
+  approvalRequests      ApprovalRequest[]
+  approvalHistories     ApprovalHistory[]
+  
+  // Timestamps
+  submittedAt           DateTime      @default(now())
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  @@index([companyId])
+  @@index([employeeId])
+  @@index([status])
+  @@index([submittedAt])
+  @@index([date])
+}
+
+model ExpenseCategory {
+  id          String    @id @default(cuid())
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  name        String    // Travel, Meals, Office, etc.
+  description String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@index([isActive])
+}
+
+// ============================================
+// APPROVAL WORKFLOW MODELS
+// ============================================
+
+enum ApprovalRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ApprovalConditionType {
+  PERCENTAGE_RULE
+  SPECIFIC_DESIGNATION
+  HYBRID
+}
+
+enum ApprovalAction {
+  AUTO_APPROVE
+  SKIP_TO_FINAL
+}
+
+enum ApprovalHistoryAction {
+  APPROVED
+  REJECTED
+}
+
+model ApprovalRequest {
+  id                    String                  @id @default(cuid())
+  
+  // Expense reference
+  expenseId             String
+  expense               Expense                 @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  
+  // Approver reference
+  approverId            String
+  approver              Employee                @relation("ApproverFor", fields: [approverId], references: [id], onDelete: Cascade)
+  
+  // Approval details
+  sequence              Int                     // Order in approval chain (1, 2, 3...)
+  status                ApprovalRequestStatus   @default(PENDING)
+  requiredDesignation   String                  // Designation required to approve (MANAGER, FINANCE, DIRECTOR, CFO, etc.)
+  comment               String?                 // Approval/Rejection comment
+  
+  // Timestamps
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  completedAt           DateTime?               // When approved/rejected
+
+  @@index([expenseId])
+  @@index([approverId])
+  @@index([status])
+  @@index([sequence])
+  @@index([requiredDesignation])
+  @@unique([expenseId, sequence])  // Only one approval per sequence per expense
+}
+
+model ApprovalRule {
+  id              String  @id @default(cuid())
+  companyId       String
+  company         Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  name            String
+  description     String?
+  status          CompanyStatus @default(ACTIVE)
+  
+  // Relationships
+  steps           ApprovalStep[]
+  conditions      ApprovalCondition[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@index([status])
+}
+
+model ApprovalStep {
+  id                    String  @id @default(cuid())
+  ruleId                String
+  rule                  ApprovalRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  
+  sequence              Int     // Order of approval (1, 2, 3...)
+  requiredDesignation   String  // MANAGER, FINANCE, DIRECTOR, CFO, HR, etc.
+  
+  createdAt             DateTime @default(now())
+
+  @@unique([ruleId, sequence])
+  @@index([ruleId])
+  @@index([requiredDesignation])
+}
+
+model ApprovalCondition {
+  id                    String                  @id @default(cuid())
+  ruleId                String
+  rule                  ApprovalRule            @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  
+  conditionType         ApprovalConditionType   // PERCENTAGE_RULE, SPECIFIC_DESIGNATION, HYBRID
+  percentage            Int?                    // e.g., 60 for 60% of approvers
+  specificDesignation   String?                 // For specific approver designation (e.g., "CFO")
+  action                ApprovalAction          // AUTO_APPROVE, SKIP_TO_FINAL
+  
+  createdAt             DateTime                @default(now())
+
+  @@index([ruleId])
+  @@index([specificDesignation])
+}
+
+model ApprovalHistory {
+  id                    String                  @id @default(cuid())
+  
+  // Expense & Approver references
+  expenseId             String
+  expense               Expense                 @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  
+  approverId            String
+  approver              Employee                @relation("ApprovedBy", fields: [approverId], references: [id], onDelete: Cascade)
+  
+  // Approval details
+  approverDesignation   String                  // Snapshot of approver's designation at time of approval
+  action                ApprovalHistoryAction   // APPROVED, REJECTED
+  comment               String?
+  
+  // Timestamp
+  actionAt              DateTime                @default(now())
+
+  @@index([expenseId])
+  @@index([approverId])
+  @@index([actionAt])
+  @@index([approverDesignation])
+}
+
+// ============================================
+// COMPANY CONFIGURATION MODELS
+// ============================================
+
+model CompanySettings {
+  id                        String  @id @default(cuid())
+  companyId                 String  @unique
+  company                   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  defaultApprovalRuleId     String?
+  enableOCR                 Boolean @default(true)
+  requireReceiptAboveAmount Decimal? @db.Decimal(10, 2)
+  maxExpenseAmount          Decimal? @db.Decimal(10, 2)
+  
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@index([companyId])
 }
 
 

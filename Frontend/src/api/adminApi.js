@@ -25,4 +25,24 @@ export const adminApi = {
     const response = await api.delete(`/api/admin/users/${userId}`);
     return response.data;
   },
+
+  getApprovalRules: async () => {
+    const response = await api.get("/api/admin/approval-rules");
+    return response.data;
+  },
+
+  updateApprovalRule: async (ruleId, payload) => {
+    const response = await api.put(`/api/admin/approval-rules/${ruleId}`, payload);
+    return response.data;
+  },
+
+  getPendingExpenses: async () => {
+    const response = await api.get("/api/admin/pending-expenses");
+    return response.data;
+  },
+
+  assignRuleToExpense: async (ruleId, expenseId) => {
+    const response = await api.post(`/api/admin/approval-rules/${ruleId}/assign/${expenseId}`);
+    return response.data;
+  },
 };

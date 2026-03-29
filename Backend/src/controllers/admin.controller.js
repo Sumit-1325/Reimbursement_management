@@ -3,7 +3,9 @@ import { prisma } from "../lib/prisma.js";
 
 const ALLOWED_CREATE_ROLES = ["MANAGER", "EMPLOYEE"];
 const ALLOWED_DESIGNATIONS = ["EMPLOYEE", "FINANCE", "DIRECTOR", "CFO", "MANAGER"];
+const APPROVAL_STEP_DESIGNATIONS = ["MANAGER", "FINANCE", "DIRECTOR", "CFO"];
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const APPROVAL_RULE_CONFIG_PREFIX = "APPROVAL_RULE_CONFIG::";
 
 function isValidEmail(email) {
   return EMAIL_REGEX.test(String(email || "").trim().toLowerCase());
@@ -131,6 +133,114 @@ function serializeEmployee(employee) {
     createdAt: employee.createdAt,
     updatedAt: employee.updatedAt,
   };
+}
+
+function getDefaultApprovalRuleConfig() {
+  return {
+    managerFirst: true,
+    requiredDesignations: ["FINANCE"],
+  };
+}
+
+function parseApprovalRuleConfig(description) {
+  if (!description || typeof description !== "string") {
+    return getDefaultApprovalRuleConfig();
+  }
+
+  if (!description.startsWith(APPROVAL_RULE_CONFIG_PREFIX)) {
+    return getDefaultApprovalRuleConfig();
+  }
+
+  const jsonPart = description.slice(APPROVAL_RULE_CONFIG_PREFIX.length);
+
+  try {
+    const parsed = JSON.parse(jsonPart);
+    return {
+      managerFirst: Boolean(parsed?.managerFirst),
+      requiredDesignations: Array.isArray(parsed?.requiredDesignations)
+        ? parsed.requiredDesignations
+            .map((item) => String(item || "").trim().toUpperCase())
+            .filter((item) => APPROVAL_STEP_DESIGNATIONS.includes(item))
+        : [],
+    };
+  } catch (_error) {
+    return getDefaultApprovalRuleConfig();
+  }
+}
+
+function serializeApprovalRuleConfig(config) {
+  return `${APPROVAL_RULE_CONFIG_PREFIX}${JSON.stringify({
+    managerFirst: Boolean(config?.managerFirst),
+    requiredDesignations: Array.isArray(config?.requiredDesignations)
+      ? config.requiredDesignations
+      : [],
+  })}`;
+}
+
+function serializeApprovalRule(rule) {
+  const config = parseApprovalRuleConfig(rule.description);
+  const requiredSet = new Set(config.requiredDesignations || []);
+
+  return {
+    id: rule.id,
+    name: rule.name,
+    status: rule.status,
+    managerFirst: config.managerFirst,
+    steps: (rule.steps || []).map((step) => ({
+      id: step.id,
+      sequence: step.sequence,
+      designation: step.requiredDesignation,
+      required: requiredSet.has(step.requiredDesignation),
+    })),
+    createdAt: rule.createdAt,
+    updatedAt: rule.updatedAt,
+  };
+}
+
+async function ensureDefaultApprovalRule(companyId) {
+  const existingRule = await prisma.approvalRule.findFirst({
+    where: {
+      companyId,
+      status: "ACTIVE",
+    },
+    include: {
+      steps: {
+        orderBy: { sequence: "asc" },
+      },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  if (existingRule) {
+    return existingRule;
+  }
+
+  const config = getDefaultApprovalRuleConfig();
+  return prisma.approvalRule.create({
+    data: {
+      companyId,
+      name: "Default Expense Rule",
+      status: "ACTIVE",
+      description: serializeApprovalRuleConfig(config),
+      steps: {
+        create: [
+          {
+            sequence: 1,
+            requiredDesignation: "FINANCE",
+          },
+          {
+            sequence: 2,
+            requiredDesignation: "DIRECTOR",
+          },
+        ],
+      },
+    },
+    include: {
+      steps: {
+        orderBy: { sequence: "asc" },
+      },
+    },
+  });
 }
 
 /**
@@ -616,6 +726,471 @@ export async function getAllUsersByAdmin(req, res) {
     return res.status(500).json({
       success: false,
       message: "Failed to fetch users",
+      error: error.message,
+    });
+  }
+}
+
+/**
+ * GET /api/admin/approval-rules
+ * ADMIN gets company approval rules (auto-creates default if empty)
+ */
+export async function getApprovalRulesByAdmin(req, res) {
+  try {
+    const adminId = req.userId;
+    const jwtCompanyId = req.companyId;
+    const { companyId } = await getValidatedAdminContext(adminId, jwtCompanyId);
+
+    await ensureDefaultApprovalRule(companyId);
+
+    const rules = await prisma.approvalRule.findMany({
+      where: {
+        companyId,
+        status: "ACTIVE",
+      },
+      include: {
+        steps: {
+          orderBy: { sequence: "asc" },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        rules: rules.map(serializeApprovalRule),
+      },
+    });
+  } catch (error) {
+    if (error.message === "ADMIN_NOT_FOUND") {
+      return res.status(401).json({ success: false, message: "Admin not found" });
+    }
+    if (error.message === "ADMIN_INACTIVE") {
+      return res.status(403).json({ success: false, message: "Inactive admin cannot access approval rules" });
+    }
+    if (error.message === "ADMIN_REQUIRED") {
+      return res.status(403).json({ success: false, message: "Only ADMIN can access approval rules" });
+    }
+    if (error.message === "COMPANY_CONTEXT_MISSING") {
+      return res.status(400).json({ success: false, message: "Company context missing for admin" });
+    }
+
+    console.error("Get approval rules by admin error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch approval rules",
+      error: error.message,
+    });
+  }
+}
+
+/**
+ * PUT /api/admin/approval-rules/:ruleId
+ * ADMIN updates approval rule sequencing and manager-first config
+ */
+export async function updateApprovalRuleByAdmin(req, res) {
+  try {
+    const adminId = req.userId;
+    const jwtCompanyId = req.companyId;
+    const { companyId } = await getValidatedAdminContext(adminId, jwtCompanyId);
+
+    const ruleId = req.params.ruleId;
+    const name = String(req.body?.name || "").trim();
+    const managerFirst = Boolean(req.body?.managerFirst);
+    const rawSteps = Array.isArray(req.body?.steps) ? req.body.steps : [];
+
+    if (!ruleId) {
+      return res.status(400).json({ success: false, message: "ruleId is required" });
+    }
+
+    if (!name) {
+      return res.status(400).json({ success: false, message: "Rule name is required" });
+    }
+
+    if (rawSteps.length === 0) {
+      return res.status(400).json({ success: false, message: "At least one approval step is required" });
+    }
+
+    const steps = rawSteps.map((step, index) => ({
+      sequence: index + 1,
+      designation: String(step?.designation || "").trim().toUpperCase(),
+      required: Boolean(step?.required),
+    }));
+
+    const seen = new Set();
+    for (const step of steps) {
+      if (!APPROVAL_STEP_DESIGNATIONS.includes(step.designation)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid designation in steps: ${step.designation}`,
+        });
+      }
+      if (seen.has(step.designation)) {
+        return res.status(400).json({
+          success: false,
+          message: `Duplicate designation in steps: ${step.designation}`,
+        });
+      }
+      seen.add(step.designation);
+    }
+
+    const existingRule = await prisma.approvalRule.findFirst({
+      where: {
+        id: ruleId,
+        companyId,
+      },
+      select: { id: true },
+    });
+
+    if (!existingRule) {
+      return res.status(404).json({ success: false, message: "Approval rule not found" });
+    }
+
+    const requiredDesignations = steps
+      .filter((step) => step.required)
+      .map((step) => step.designation);
+
+    const updatedRule = await prisma.$transaction(async (tx) => {
+      await tx.approvalStep.deleteMany({
+        where: { ruleId },
+      });
+
+      const updated = await tx.approvalRule.update({
+        where: { id: ruleId },
+        data: {
+          name,
+          description: serializeApprovalRuleConfig({
+            managerFirst,
+            requiredDesignations,
+          }),
+          steps: {
+            create: steps.map((step) => ({
+              sequence: step.sequence,
+              requiredDesignation: step.designation,
+            })),
+          },
+        },
+        include: {
+          steps: {
+            orderBy: { sequence: "asc" },
+          },
+        },
+      });
+
+      return updated;
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Approval rule updated successfully",
+      data: {
+        rule: serializeApprovalRule(updatedRule),
+      },
+    });
+  } catch (error) {
+    if (error.message === "ADMIN_NOT_FOUND") {
+      return res.status(401).json({ success: false, message: "Admin not found" });
+    }
+    if (error.message === "ADMIN_INACTIVE") {
+      return res.status(403).json({ success: false, message: "Inactive admin cannot update approval rules" });
+    }
+    if (error.message === "ADMIN_REQUIRED") {
+      return res.status(403).json({ success: false, message: "Only ADMIN can update approval rules" });
+    }
+    if (error.message === "COMPANY_CONTEXT_MISSING") {
+      return res.status(400).json({ success: false, message: "Company context missing for admin" });
+    }
+
+    console.error("Update approval rule by admin error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update approval rule",
+      error: error.message,
+    });
+  }
+}
+
+/**
+ * GET /api/admin/pending-expenses
+ * ADMIN gets pending expenses in company for approval rule assignment
+ */
+export async function getPendingExpensesByAdmin(req, res) {
+  try {
+    const adminId = req.userId;
+    const jwtCompanyId = req.companyId;
+    const { companyId } = await getValidatedAdminContext(adminId, jwtCompanyId);
+
+    const expenses = await prisma.expense.findMany({
+      where: {
+        companyId,
+        status: "PENDING",
+      },
+      orderBy: {
+        submittedAt: "desc",
+      },
+      take: 100,
+      select: {
+        id: true,
+        amount: true,
+        currencyCode: true,
+        description: true,
+        submittedAt: true,
+        employee: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            designation: true,
+            managerId: true,
+            manager: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                designation: true,
+              },
+            },
+          },
+        },
+        _count: {
+          select: {
+            approvalRequests: true,
+          },
+        },
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        expenses,
+      },
+    });
+  } catch (error) {
+    if (error.message === "ADMIN_NOT_FOUND") {
+      return res.status(401).json({ success: false, message: "Admin not found" });
+    }
+    if (error.message === "ADMIN_INACTIVE") {
+      return res.status(403).json({ success: false, message: "Inactive admin cannot access pending expenses" });
+    }
+    if (error.message === "ADMIN_REQUIRED") {
+      return res.status(403).json({ success: false, message: "Only ADMIN can access pending expenses" });
+    }
+    if (error.message === "COMPANY_CONTEXT_MISSING") {
+      return res.status(400).json({ success: false, message: "Company context missing for admin" });
+    }
+
+    console.error("Get pending expenses by admin error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch pending expenses",
+      error: error.message,
+    });
+  }
+}
+
+/**
+ * POST /api/admin/approval-rules/:ruleId/assign/:expenseId
+ * ADMIN generates approval request chain for a pending expense
+ */
+export async function assignApprovalRuleToExpenseByAdmin(req, res) {
+  try {
+    const adminId = req.userId;
+    const jwtCompanyId = req.companyId;
+    const { companyId } = await getValidatedAdminContext(adminId, jwtCompanyId);
+
+    const ruleId = req.params.ruleId;
+    const expenseId = req.params.expenseId;
+
+    if (!ruleId || !expenseId) {
+      return res.status(400).json({
+        success: false,
+        message: "ruleId and expenseId are required",
+      });
+    }
+
+    const [expense, rule] = await Promise.all([
+      prisma.expense.findFirst({
+        where: {
+          id: expenseId,
+          companyId,
+        },
+        select: {
+          id: true,
+          companyId: true,
+          status: true,
+          employee: {
+            select: {
+              id: true,
+              managerId: true,
+              manager: {
+                select: {
+                  id: true,
+                  status: true,
+                  role: true,
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+            },
+          },
+          approvalRequests: {
+            select: { id: true },
+          },
+        },
+      }),
+      prisma.approvalRule.findFirst({
+        where: {
+          id: ruleId,
+          companyId,
+          status: "ACTIVE",
+        },
+        include: {
+          steps: {
+            orderBy: { sequence: "asc" },
+          },
+        },
+      }),
+    ]);
+
+    if (!expense) {
+      return res.status(404).json({ success: false, message: "Expense not found" });
+    }
+
+    if (expense.status !== "PENDING") {
+      return res.status(400).json({ success: false, message: "Approval requests can only be assigned to pending expenses" });
+    }
+
+    if (expense.approvalRequests.length > 0) {
+      return res.status(400).json({ success: false, message: "Approval requests already exist for this expense" });
+    }
+
+    if (!rule) {
+      return res.status(404).json({ success: false, message: "Approval rule not found" });
+    }
+
+    const config = parseApprovalRuleConfig(rule.description);
+    const requiredSet = new Set(config.requiredDesignations || []);
+
+    const chain = [];
+    const usedApproverIds = new Set();
+
+    if (config.managerFirst) {
+      const employeeManager = expense.employee?.manager;
+      if (!employeeManager || employeeManager.status !== "ACTIVE" || employeeManager.role !== "MANAGER") {
+        return res.status(400).json({
+          success: false,
+          message: "Employee must have an active manager for manager-first approval",
+        });
+      }
+
+      chain.push({
+        approverId: employeeManager.id,
+        requiredDesignation: "MANAGER",
+      });
+      usedApproverIds.add(employeeManager.id);
+    }
+
+    for (const step of rule.steps) {
+      const designation = step.requiredDesignation;
+
+      if (designation === "MANAGER" && config.managerFirst) {
+        continue;
+      }
+
+      const isRequired = requiredSet.has(designation);
+
+      const approver = await prisma.employee.findFirst({
+        where: {
+          companyId,
+          status: "ACTIVE",
+          isApprover: true,
+          designation,
+        },
+        select: {
+          id: true,
+        },
+        orderBy: { createdAt: "asc" },
+      });
+
+      if (!approver && isRequired) {
+        return res.status(400).json({
+          success: false,
+          message: `Required approver for designation ${designation} not found`,
+        });
+      }
+
+      if (!approver) {
+        continue;
+      }
+
+      if (usedApproverIds.has(approver.id)) {
+        continue;
+      }
+
+      chain.push({
+        approverId: approver.id,
+        requiredDesignation: designation,
+      });
+      usedApproverIds.add(approver.id);
+    }
+
+    if (chain.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No eligible approvers found to build approval chain",
+      });
+    }
+
+    const approvalRequests = await prisma.$transaction(
+      chain.map((entry, index) =>
+        prisma.approvalRequest.create({
+          data: {
+            expenseId,
+            approverId: entry.approverId,
+            sequence: index + 1,
+            requiredDesignation: entry.requiredDesignation,
+            status: "PENDING",
+          },
+          select: {
+            id: true,
+            approverId: true,
+            sequence: true,
+            requiredDesignation: true,
+            status: true,
+          },
+        })
+      )
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: "Approval chain generated successfully",
+      data: {
+        expenseId,
+        ruleId: rule.id,
+        approvalRequests,
+      },
+    });
+  } catch (error) {
+    if (error.message === "ADMIN_NOT_FOUND") {
+      return res.status(401).json({ success: false, message: "Admin not found" });
+    }
+    if (error.message === "ADMIN_INACTIVE") {
+      return res.status(403).json({ success: false, message: "Inactive admin cannot assign approval rules" });
+    }
+    if (error.message === "ADMIN_REQUIRED") {
+      return res.status(403).json({ success: false, message: "Only ADMIN can assign approval rules" });
+    }
+    if (error.message === "COMPANY_CONTEXT_MISSING") {
+      return res.status(400).json({ success: false, message: "Company context missing for admin" });
+    }
+
+    console.error("Assign approval rule to expense by admin error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to assign approval rule",
       error: error.message,
     });
   }

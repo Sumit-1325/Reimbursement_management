@@ -1,93 +1,54 @@
-import React, { useState, useEffect } from "react"
+import React from "react"
+import { useNavigate } from "react-router-dom"
 import {
-  UsersIcon,
   Activity,
-  TrendingUpIcon,
-  Zap,
   UserPlus,
   FileText,
   BarChart3,
   Settings,
 } from "lucide-react"
-import { toast } from "sonner"
 import Navbar from "@/components/layout/Navbar"
 import SideNavbar from "@/components/layout/SideNavbar"
 import PageBreadcrumb from "@/components/layout/PageBreadcrumb"
-import StatCard from "@/components/dashboard/StatCard"
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed"
 import { QuickActions } from "@/components/dashboard/QuickActions"
 import { useUser } from "@/context/UserContext"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 
 export default function AdminDashboard() {
   const { user } = useUser()
-  const [loading, setLoading] = useState(false)
+  const navigate = useNavigate()
 
-  // Dummy data for admin dashboard
-  const dashboardData = {
-    totalUsers: 42,
-    activeUsers: 28,
-    admins: 3,
-    participants: 39,
-    users: [],
-  }
-
-  // Dynamic stats based on real data
-  const stats = dashboardData ? [
+  const dummyClaimRequests = [
     {
-      icon: UsersIcon,
-      title: "Total Users",
-      value: dashboardData.totalUsers.toString(),
-      change: dashboardData.totalUsers > 100 ? 12 : 5,
-      trend: "up",
-      bgColor: "bg-blue-500/10",
-      borderColor: "border-l-blue-600",
-      textColor: "text-blue-400",
-      subtitle: `${dashboardData.activeUsers} active`,
+      id: "CLM-1001",
+      employee: "Aman Verma",
+      type: "Travel",
+      amount: "INR 3,450",
+      submittedAt: "2 hours ago",
+      status: "PENDING",
     },
     {
-      icon: Activity,
-      title: "Active Sessions",
-      value: dashboardData.activeUsers.toString(),
-      change: 8,
-      trend: "up",
-      bgColor: "bg-green-500/10",
-      borderColor: "border-l-green-600",
-      textColor: "text-green-400",
-      subtitle: "Currently online",
+      id: "CLM-1002",
+      employee: "Neha Sharma",
+      type: "Meals",
+      amount: "INR 1,980",
+      submittedAt: "5 hours ago",
+      status: "PENDING",
     },
     {
-      icon: TrendingUpIcon,
-      title: "Admin Users",
-      value: dashboardData.admins.toString(),
-      change: 5,
-      trend: "up",
-      bgColor: "bg-purple-500/10",
-      borderColor: "border-l-purple-600",
-      textColor: "text-purple-400",
-      subtitle: "System administrators",
+      id: "CLM-1003",
+      employee: "Rohit Gupta",
+      type: "Accommodation",
+      amount: "INR 7,200",
+      submittedAt: "Yesterday",
+      status: "PENDING",
     },
-    {
-      icon: Zap,
-      title: "Participants",
-      value: dashboardData.participants.toString(),
-      change: 12,
-      trend: "up",
-      bgColor: "bg-orange-500/10",
-      borderColor: "border-l-orange-600",
-      textColor: "text-orange-400",
-      subtitle: "Regular users",
-    },
-  ] : []
+  ]
 
   // Sample activity data - in real app, this could come from a separate endpoint
-  const activityFeed = dashboardData ? [
-    ...dashboardData.users.slice(0, 3).map((u) => ({
-      user: `${u.firstName} ${u.lastName || ""}`,
-      avatar: u.avatar || "",
-      action: `joined as ${u.role === "ADMIN" ? "admin" : "participant"}`,
-      timestamp: new Date(u.createdAt).toLocaleDateString(),
-      type: "success",
-    })),
+  const activityFeed = [
     {
       user: "System",
       avatar: "",
@@ -95,7 +56,7 @@ export default function AdminDashboard() {
       timestamp: "1 hour ago",
       type: "success",
     },
-  ] : []
+  ]
 
   // Sample quick actions
   const quickActions = [
@@ -107,9 +68,9 @@ export default function AdminDashboard() {
     },
     {
       icon: FileText,
-      label: "Create Report",
-      description: "Generate system report",
-      onClick: () => alert("Create Report clicked"),
+      label: "Pending Requests",
+      description: "Configure approval rules and generate approval chains",
+      onClick: () => navigate("/approval-rules"),
     },
     {
       icon: BarChart3,
@@ -155,15 +116,40 @@ export default function AdminDashboard() {
                 Admin Dashboard
               </h1>
               <p className="text-slate-400">
-                System overview and management tools
+                Manage employee claims and approval setup
               </p>
             </div>
 
-            {/* Stat Cards Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              {stats.map((stat, idx) => (
-                <StatCard key={idx} {...stat} />
-              ))}
+            <div className="mb-8 rounded-lg border border-slate-800 bg-slate-900/80 backdrop-blur-sm border-l-4 border-l-blue-600">
+              <div className="flex items-center justify-between border-b border-slate-800 px-6 py-4 gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Employee Claim Requests</h3>
+                  <p className="text-sm text-slate-400">Dummy pending claims for UI preview</p>
+                </div>
+                <Button
+                  type="button"
+                  onClick={() => navigate("/approval-rules")}
+                >
+                  Open Pending Requests
+                </Button>
+              </div>
+              <div className="px-6 py-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                {dummyClaimRequests.map((claim) => (
+                  <button
+                    key={claim.id}
+                    type="button"
+                    onClick={() => navigate("/approval-rules")}
+                    className="text-left rounded-lg border border-slate-700 bg-slate-900/60 p-4 hover:border-blue-500/50 transition-all"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-slate-100 font-medium">{claim.employee}</p>
+                      <Badge variant="outline">{claim.status}</Badge>
+                    </div>
+                    <p className="text-sm text-slate-300">{claim.type} • {claim.amount}</p>
+                    <p className="text-xs text-slate-500 mt-1">{claim.id} • {claim.submittedAt}</p>
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Main Content Grid */}

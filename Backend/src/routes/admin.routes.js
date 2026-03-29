@@ -1,7 +1,16 @@
 import express from "express";
 import { authenticateToken } from "../middleware/verify.middleware.js";
 import { authorizeRole } from "../middleware/authorization.middleware.js";
-import { createUserByAdmin, deleteUserByAdmin, getAllUsersByAdmin, updateUserByAdmin } from "../controllers/admin.controller.js";
+import {
+	assignApprovalRuleToExpenseByAdmin,
+	createUserByAdmin,
+	deleteUserByAdmin,
+	getAllUsersByAdmin,
+	getApprovalRulesByAdmin,
+	getPendingExpensesByAdmin,
+	updateApprovalRuleByAdmin,
+	updateUserByAdmin,
+} from "../controllers/admin.controller.js";
 
 const router = express.Router();
 
@@ -42,6 +51,50 @@ router.delete(
 	authenticateToken,
 	authorizeRole("ADMIN"),
 	deleteUserByAdmin
+);
+
+/**
+ * GET /api/admin/approval-rules
+ * ADMIN: list approval rules
+ */
+router.get(
+	"/approval-rules",
+	authenticateToken,
+	authorizeRole("ADMIN"),
+	getApprovalRulesByAdmin
+);
+
+/**
+ * PUT /api/admin/approval-rules/:ruleId
+ * ADMIN: update approval rule
+ */
+router.put(
+	"/approval-rules/:ruleId",
+	authenticateToken,
+	authorizeRole("ADMIN"),
+	updateApprovalRuleByAdmin
+);
+
+/**
+ * GET /api/admin/pending-expenses
+ * ADMIN: list pending expenses for approval assignment
+ */
+router.get(
+	"/pending-expenses",
+	authenticateToken,
+	authorizeRole("ADMIN"),
+	getPendingExpensesByAdmin
+);
+
+/**
+ * POST /api/admin/approval-rules/:ruleId/assign/:expenseId
+ * ADMIN: generate approval chain for expense
+ */
+router.post(
+	"/approval-rules/:ruleId/assign/:expenseId",
+	authenticateToken,
+	authorizeRole("ADMIN"),
+	assignApprovalRuleToExpenseByAdmin
 );
 
 export default router;

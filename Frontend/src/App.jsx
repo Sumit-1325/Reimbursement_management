@@ -7,6 +7,7 @@ import RegistrationPage from "@/pages/Register"
 import AdminDashboard from "@/pages/AdminDashboard"
 import UserDashboard from "@/pages/UserDashboard"
 import UsersPage from "@/pages/Users"
+import AdminApprovalRules from "@/pages/AdminApprovalRules"
 import { Toaster } from "@/components/ui/sonner"
 
 function RoleBasedDashboardRoute() {
@@ -30,6 +31,16 @@ function AdminUsersRoute() {
   return <UsersPage />
 }
 
+function AdminApprovalRulesRoute() {
+  const { user, loading } = useUser()
+
+  if (loading) return null
+  if (!user) return <Navigate to="/login" replace />
+  if (user.role !== "ADMIN") return <Navigate to="/dashboard" replace />
+
+  return <AdminApprovalRules />
+}
+
 function App() {
   return (
     <UserProvider>
@@ -42,6 +53,7 @@ function App() {
           <Route path="/admin-dashboard" element={<AdminDashboard />} />
           <Route path="/user-dashboard" element={<UserDashboard />} />
           <Route path="/users" element={<AdminUsersRoute />} />
+          <Route path="/approval-rules" element={<AdminApprovalRulesRoute />} />
 
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

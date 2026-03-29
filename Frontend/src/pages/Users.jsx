@@ -10,12 +10,19 @@ import UsersSearchBar from "@/components/users/UsersSearchBar"
 import UsersTable from "@/components/users/UsersTable"
 import UserFormDialog from "@/components/users/UserFormDialog"
 import { useUser } from "@/context/UserContext"
+import { adminApi } from "@/api/adminApi"
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+const getErrorMessage = (err, fallback = "Something went wrong") =>
+  err?.response?.data?.message || err?.message || fallback
 
 export default function UsersPage() {
   const { user } = useUser()
   const [search, setSearch] = useState("")
-  const [allUsers, setAllUsers] = useState([])
   const [users, setUsers] = useState([])
+  const [managers, setManagers] = useState([])
+  const [reloadKey, setReloadKey] = useState(0)
   const [totalUsers, setTotalUsers] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -28,9 +35,11 @@ export default function UsersPage() {
     lastName: "",
     email: "",
     password: "",
-    role: "PARTICIPANT",
-    status: "ACTIVE",
-    bio: "",
+    confirmPassword: "",
+    role: "EMPLOYEE",
+    designation: "EMPLOYEE",
+    managerId: "",
+    department: "",
   })
 
   const transformUsers = (rawUsers) =>
@@ -38,7 +47,12 @@ export default function UsersPage() {
       id: u.id,
       name: `${u.firstName} ${u.lastName || ""}`.trim(),
       email: u.email,
-      role: u.role === "ADMIN" ? "Admin" : "Participant",
+      role:
+        u.role === "ADMIN"
+          ? "Admin"
+          : u.role === "MANAGER"
+            ? "Manager"
+            : "Employee",
       status:
         u.status === "ACTIVE"
           ? "Active"
@@ -50,72 +64,46 @@ export default function UsersPage() {
                 ? "Banned"
                 : "Pending",
       avatar: u.avatar,
+      managerName:
+        u.role === "EMPLOYEE"
+          ? `${u.manager?.firstName || ""} ${u.manager?.lastName || ""}`.trim() || "-"
+          : "-",
       ...u,
     }))
 
-  const getInitialUsers = () =>
-    transformUsers([
-      {
-        id: "u1",
-        firstName: "Aman",
-        lastName: "Sharma",
-        email: "aman@example.com",
-        role: "ADMIN",
-        status: "ACTIVE",
-        bio: "Platform administrator",
-      },
-      {
-        id: "u2",
-        firstName: "Neha",
-        lastName: "Verma",
-        email: "neha@example.com",
-        role: "PARTICIPANT",
-        status: "ACTIVE",
-        bio: "Finance team",
-      },
-      {
-        id: "u3",
-        firstName: "Rohan",
-        lastName: "Patel",
-        email: "rohan@example.com",
-        role: "PARTICIPANT",
-        status: "SUSPENDED",
-        bio: "Operations",
-      },
-    ])
-
-  // Initialize local data (no admin API dependency)
+  // Fetch users from admin API
   useEffect(() => {
-    const seed = getInitialUsers()
-    setAllUsers(seed)
-    setUsers(seed)
-    setTotalUsers(seed.length)
-    setLoading(false)
-    setError(null)
-  }, [])
+    const delay = setTimeout(async () => {
+      try {
+        setLoading(true)
+        const response = await adminApi.getAllUsers({
+          page: 1,
+          limit: 100,
+          search,
+        })
 
-  // Local search filter
-  useEffect(() => {
-    const query = search.trim().toLowerCase()
-    if (!query) {
-      setUsers(allUsers)
-      setTotalUsers(allUsers.length)
-      return
-    }
+        const fetchedUsers = response?.data?.users || []
+        const normalizedUsers = transformUsers(fetchedUsers)
+        setUsers(normalizedUsers)
+        setManagers(
+          normalizedUsers.filter((item) => String(item.role || "").toUpperCase() === "MANAGER")
+        )
+        setTotalUsers(response?.data?.pagination?.total || fetchedUsers.length)
+        setError(null)
+      } catch (err) {
+        console.error("Error fetching users:", err)
+        const message = getErrorMessage(err, "Failed to load users")
+        setError(message)
+        toast.error("Failed to load users", {
+          description: message,
+        })
+      } finally {
+        setLoading(false)
+      }
+    }, 300)
 
-    const filtered = allUsers.filter((u) => {
-      const fullName = `${u.firstName || ""} ${u.lastName || ""}`.toLowerCase()
-      return (
-        fullName.includes(query) ||
-        String(u.email || "").toLowerCase().includes(query) ||
-        String(u.role || "").toLowerCase().includes(query) ||
-        String(u.status || "").toLowerCase().includes(query)
-      )
-    })
-
-    setUsers(filtered)
-    setTotalUsers(filtered.length)
-  }, [search, allUsers])
+    return () => clearTimeout(delay)
+  }, [search, reloadKey])
 
   const handleOpenAddModal = () => {
     setModalMode("add")
@@ -124,9 +112,11 @@ export default function UsersPage() {
       lastName: "",
       email: "",
       password: "",
-      role: "PARTICIPANT",
-      status: "ACTIVE",
-      bio: "",
+      confirmPassword: "",
+      role: "EMPLOYEE",
+      designation: "EMPLOYEE",
+      managerId: "",
+      department: "",
     })
     setIsModalOpen(true)
   }
@@ -134,19 +124,33 @@ export default function UsersPage() {
   const handleOpenEditModal = (user) => {
     setModalMode("edit")
     setEditingUserId(user.id)
+    const normalizedRole = String(user.role || "EMPLOYEE").toUpperCase()
     setForm({
       firstName: user.firstName || "",
       lastName: user.lastName || "",
       email: user.email || "",
       password: "", // Not used in edit mode
-      role: user.role || "PARTICIPANT",
-      status: user.status || "ACTIVE",
-      bio: user.bio || "",
+      confirmPassword: "",
+      role: normalizedRole,
+      designation: normalizedRole === "EMPLOYEE" ? "EMPLOYEE" : (user.designation || "MANAGER"),
+      managerId: user.managerId || "",
+      department: user.department || "",
     })
     setIsModalOpen(true)
   }
 
   const handleFormChange = (field, value) => {
+    if (field === "role") {
+      const selectedRole = String(value || "").toUpperCase()
+      setForm((prev) => ({
+        ...prev,
+        role: selectedRole,
+        designation: selectedRole === "EMPLOYEE" ? "EMPLOYEE" : (prev.designation === "EMPLOYEE" ? "MANAGER" : prev.designation),
+        managerId: selectedRole === "EMPLOYEE" ? prev.managerId : "",
+      }))
+      return
+    }
+
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
@@ -170,6 +174,13 @@ export default function UsersPage() {
           return
         }
 
+        if (!EMAIL_REGEX.test(form.email.trim().toLowerCase())) {
+          toast.error("Validation Error", {
+            description: "Invalid email format.",
+          })
+          return
+        }
+
         if (!form.password.trim()) {
           toast.error("Validation Error", {
             description: "Password is required.",
@@ -184,25 +195,50 @@ export default function UsersPage() {
           return
         }
 
+        if (form.password !== form.confirmPassword) {
+          toast.error("Validation Error", {
+            description: "Password and confirm password must match.",
+          })
+          return
+        }
+
         const payload = {
           firstName: form.firstName.trim(),
           lastName: form.lastName.trim() || null,
-          email: form.email.trim(),
+          email: form.email.trim().toLowerCase(),
           password: form.password.trim(),
-          role: form.role,
-          status: form.status,
-          bio: form.bio.trim() || null,
+          role: String(form.role || "").toUpperCase(),
+          designation:
+            String(form.role || "").toUpperCase() === "EMPLOYEE"
+              ? "EMPLOYEE"
+              : form.designation,
+          managerId:
+            String(form.role || "").toUpperCase() === "EMPLOYEE"
+              ? (String(form.managerId || "").trim() || null)
+              : null,
+          department: form.department?.trim() || null,
         }
 
-        const createdUser = {
-          id: `${Date.now()}`,
-          ...payload,
+        if (payload.role === "EMPLOYEE" && !payload.managerId) {
+          toast.error("Validation Error", {
+            description: "Please select a manager for employee.",
+          })
+          return
+        }
+
+        const response = await adminApi.createUser(payload)
+        const createdUser = response?.data?.user
+
+        if (!createdUser) {
+          throw new Error("Created user not returned from API")
         }
 
         const normalizedNewUser = transformUsers([createdUser])[0]
-        setAllUsers((prev) => [normalizedNewUser, ...prev])
+        setUsers((prev) => [normalizedNewUser, ...prev])
+        setTotalUsers((prev) => prev + 1)
 
         setIsModalOpen(false)
+        setReloadKey((prev) => prev + 1)
 
         toast.success("User added", {
           description: "New user has been created successfully.",
@@ -211,31 +247,88 @@ export default function UsersPage() {
         // Edit mode handler
         if (!editingUserId) return
 
+        if (!form.firstName.trim()) {
+          toast.error("Validation Error", {
+            description: "First name is required.",
+          })
+          return
+        }
+
+        if (!form.email.trim()) {
+          toast.error("Validation Error", {
+            description: "Email is required.",
+          })
+          return
+        }
+
+        if (!EMAIL_REGEX.test(form.email.trim().toLowerCase())) {
+          toast.error("Validation Error", {
+            description: "Invalid email format.",
+          })
+          return
+        }
+
         const payload = {
           firstName: form.firstName.trim(),
-          lastName: form.lastName.trim(),
-          email: form.email.trim(),
-          role: form.role,
-          status: form.status,
-          bio: form.bio.trim(),
+          lastName: form.lastName.trim() || null,
+          email: form.email.trim().toLowerCase(),
+          role: String(form.role || "").toUpperCase(),
+          designation:
+            String(form.role || "").toUpperCase() === "EMPLOYEE"
+              ? "EMPLOYEE"
+              : form.designation,
+          managerId:
+            String(form.role || "").toUpperCase() === "EMPLOYEE"
+              ? (String(form.managerId || "").trim() || null)
+              : null,
+          department: form.department?.trim() || null,
         }
 
-        const updated = {
-          id: editingUserId,
-          ...payload,
+        if (payload.role === "EMPLOYEE" && !payload.managerId) {
+          toast.error("Validation Error", {
+            description: "Please select a manager for employee.",
+          })
+          return
         }
-        const normalizedUpdatedUser = transformUsers([updated])[0]
 
-        setAllUsers((prev) =>
+        const response = await adminApi.updateUser(editingUserId, payload)
+        const updatedUser = response?.data?.user
+
+        if (!updatedUser) {
+          throw new Error("Updated user not returned from API")
+        }
+
+        const normalizedUpdatedUser = transformUsers([updatedUser])[0]
+
+        setUsers((prev) =>
           prev.map((item) => (item.id === editingUserId ? { ...item, ...normalizedUpdatedUser } : item))
         )
+
+        setManagers((prev) => {
+          const next = [...prev]
+          const existingIdx = next.findIndex((m) => m.id === editingUserId)
+          const isManager = String(updatedUser.role || "").toUpperCase() === "MANAGER"
+
+          if (existingIdx >= 0 && !isManager) {
+            next.splice(existingIdx, 1)
+          } else if (existingIdx >= 0 && isManager) {
+            next[existingIdx] = normalizedUpdatedUser
+          } else if (existingIdx < 0 && isManager) {
+            next.push(normalizedUpdatedUser)
+          }
+
+          return next
+        })
+
         setIsModalOpen(false)
+        setReloadKey((prev) => prev + 1)
         toast.success("User updated successfully")
       }
     } catch (err) {
       console.error("User operation error:", err)
+      const message = getErrorMessage(err, modalMode === "add" ? "Failed to add user" : "Failed to update user")
       toast.error(modalMode === "add" ? "Failed to add user" : "Failed to update user", {
-        description: err.response?.data?.message || err.message,
+        description: message,
       })
     } finally {
       setIsLoading(false)
@@ -247,7 +340,7 @@ export default function UsersPage() {
   }
 
   const handleSuspend = (user) => {
-    setAllUsers((prev) =>
+    setUsers((prev) =>
       prev.map((item) =>
         item.id === user.id
           ? { ...item, status: item.status === "Suspended" ? "Active" : "Suspended" }
@@ -268,12 +361,17 @@ export default function UsersPage() {
         label: "Delete",
         onClick: async () => {
           try {
-            setAllUsers((prev) => prev.filter((item) => item.id !== user.id))
+            await adminApi.deleteUser(user.id)
+            setUsers((prev) => prev.filter((item) => item.id !== user.id))
+            setManagers((prev) => prev.filter((item) => item.id !== user.id))
+            setTotalUsers((prev) => Math.max(prev - 1, 0))
+            setReloadKey((prev) => prev + 1)
             toast.success(`${user.name} deleted successfully`)
           } catch (err) {
             console.error("Delete user error:", err)
+            const message = getErrorMessage(err, "Failed to delete user")
             toast.error("Failed to delete user", {
-              description: err.response?.data?.message || err.message,
+              description: message,
             })
           }
         },
@@ -367,6 +465,7 @@ export default function UsersPage() {
         onOpenChange={setIsModalOpen}
         isEdit={modalMode === "edit"}
         form={form}
+        managers={managers}
         onFormChange={handleFormChange}
         onSubmit={handleSubmit}
         isLoading={isLoading}

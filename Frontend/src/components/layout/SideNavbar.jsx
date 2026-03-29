@@ -61,10 +61,10 @@ function SideNavbar({ hideUsers = false }) {
               <span>Dashboard</span>
             </NavLink>
             {!hideUsers && (
-              <button type="button" className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 transition-all text-sm font-medium disabled-opacity-60">
+              <NavLink to="/users" className={navLinkClass}>
                 <UsersIcon className="w-4 h-4 flex-shrink-0" />
                 <span>Users</span>
-              </button>
+              </NavLink>
             )}
             <button type="button" className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 transition-all text-sm font-medium">
               <Activity className="w-4 h-4 flex-shrink-0" />

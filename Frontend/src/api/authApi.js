@@ -30,7 +30,7 @@ export const authApi = {
   },
 
   createUserByAdmin: async (userData) => {
-    const response = await api.post("/api/auth/users", userData);
+    const response = await api.post("/api/admin/users", userData);
     return response.data;
   },
 };

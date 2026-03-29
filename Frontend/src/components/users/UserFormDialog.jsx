@@ -9,17 +9,20 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 
 export default function UserFormDialog({
   isOpen,
   onOpenChange,
   isEdit = false,
   form,
+  managers = [],
   onFormChange,
   onSubmit,
   isLoading = false,
 }) {
+  const isEmployeeRole = String(form.role || "").toUpperCase() === "EMPLOYEE"
+  const isManagerRole = String(form.role || "").toUpperCase() === "MANAGER"
+
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl bg-slate-900 border border-slate-700 text-slate-100">
@@ -66,16 +69,29 @@ export default function UserFormDialog({
         </div>
 
         {!isEdit && (
-          <div className="space-y-2">
-            <Label>Password</Label>
-            <Input
-              type="password"
-              value={form.password}
-              onChange={(e) => onFormChange("password", e.target.value)}
-              className="bg-slate-950 border-slate-700"
-              autoComplete="new-password"
-              placeholder="Enter password (min. 6 characters)"
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Password</Label>
+              <Input
+                type="password"
+                value={form.password}
+                onChange={(e) => onFormChange("password", e.target.value)}
+                className="bg-slate-950 border-slate-700"
+                autoComplete="new-password"
+                placeholder="Enter password (min. 6 characters)"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Confirm Password</Label>
+              <Input
+                type="password"
+                value={form.confirmPassword || ""}
+                onChange={(e) => onFormChange("confirmPassword", e.target.value)}
+                className="bg-slate-950 border-slate-700"
+                autoComplete="new-password"
+                placeholder="Confirm password"
+              />
+            </div>
           </div>
         )}
 
@@ -87,34 +103,63 @@ export default function UserFormDialog({
               onChange={(e) => onFormChange("role", e.target.value)}
               className="h-10 w-full rounded-md border border-slate-700 bg-slate-950 px-3 text-sm"
             >
-              <option value="ADMIN">Admin</option>
-              <option value="PARTICIPANT">Participant</option>
+              <option value="MANAGER">Manager</option>
+              <option value="EMPLOYEE">Employee</option>
             </select>
           </div>
           <div className="space-y-2">
-            <Label>Status</Label>
-            <select
-              value={form.status}
-              onChange={(e) => onFormChange("status", e.target.value)}
-              className="h-10 w-full rounded-md border border-slate-700 bg-slate-950 px-3 text-sm"
-            >
-              <option value="ACTIVE">Active</option>
-              <option value="INACTIVE">Inactive</option>
-              <option value="SUSPENDED">Suspended</option>
-              <option value="BANNED">Banned</option>
-            </select>
+            <Label>Designation</Label>
+            {isEmployeeRole ? (
+              <Input
+                value="EMPLOYEE"
+                disabled
+                className="bg-slate-950 border-slate-700"
+              />
+            ) : (
+              <select
+                value={form.designation}
+                onChange={(e) => onFormChange("designation", e.target.value)}
+                className="h-10 w-full rounded-md border border-slate-700 bg-slate-950 px-3 text-sm"
+              >
+                {isManagerRole && <option value="MANAGER">Manager</option>}
+                <option value="FINANCE">Finance</option>
+                <option value="DIRECTOR">Director</option>
+                <option value="CFO">CFO</option>
+              </select>
+            )}
           </div>
         </div>
 
-        <div className="space-y-2">
-          <Label>Bio</Label>
-          <Textarea
-            value={form.bio}
-            onChange={(e) => onFormChange("bio", e.target.value)}
-            className="bg-slate-950 border-slate-700 min-h-20"
-            autoComplete="off"
-            placeholder="Enter user bio (optional)"
-          />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Department</Label>
+            <Input
+              value={form.department}
+              onChange={(e) => onFormChange("department", e.target.value)}
+              className="bg-slate-950 border-slate-700"
+              autoComplete="off"
+              placeholder="Department (optional)"
+            />
+          </div>
+          {isEmployeeRole ? (
+            <div className="space-y-2">
+              <Label>Manager</Label>
+              <select
+                value={form.managerId || ""}
+                onChange={(e) => onFormChange("managerId", e.target.value)}
+                className="h-10 w-full rounded-md border border-slate-700 bg-slate-950 px-3 text-sm"
+              >
+                <option value="">Select manager</option>
+                {managers.map((manager) => (
+                  <option key={manager.id} value={manager.id}>
+                    {`${manager.firstName || ""} ${manager.lastName || ""}`.trim() || manager.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div />
+          )}
         </div>
 
         <DialogFooter className="bg-transparent border-t border-slate-700 pt-6 px-6 py-4 gap-3">

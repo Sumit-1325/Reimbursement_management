@@ -129,8 +129,10 @@ function Navbar({ hideUsers = false }) {
                 {!hideUsers && (
                   <NavigationMenuItem>
                     <button 
-                      className={`${navigationMenuTriggerStyle()} text-white hover:text-purple-400 transition-colors gap-2 flex items-center cursor-pointer opacity-50`}
-                      disabled
+                      onClick={() => {
+                        navigate("/users")
+                      }}
+                      className={`${navigationMenuTriggerStyle()} text-white hover:text-purple-400 transition-colors gap-2 flex items-center cursor-pointer`}
                     >
                       <FiUsers className="w-4 h-4" />
                       Users
@@ -280,8 +282,11 @@ function Navbar({ hideUsers = false }) {
                       </button>
                       {!hideUsers && (
                         <button 
-                          disabled
-                          className="text-white hover:text-purple-400 transition-colors font-medium flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-purple-600/10 opacity-50"
+                          onClick={() => {
+                            navigate("/users")
+                            setIsOpen(false)
+                          }}
+                          className="text-white hover:text-purple-400 transition-colors font-medium flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-purple-600/10"
                         >
                           <FiUsers className="w-5 h-5" />
                           Users

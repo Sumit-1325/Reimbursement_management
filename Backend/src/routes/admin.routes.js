@@ -1,7 +1,7 @@
 import express from "express";
 import { authenticateToken } from "../middleware/verify.middleware.js";
 import { authorizeRole } from "../middleware/authorization.middleware.js";
-import { createUserByAdmin, getAllUsersByAdmin } from "../controllers/admin.controller.js";
+import { createUserByAdmin, deleteUserByAdmin, getAllUsersByAdmin, updateUserByAdmin } from "../controllers/admin.controller.js";
 
 const router = express.Router();
 
@@ -20,6 +20,28 @@ router.post(
 	authenticateToken,
 	authorizeRole("ADMIN"),
 	createUserByAdmin
+);
+
+/**
+ * PUT /api/admin/users/:userId
+ * ADMIN: update user fields except password
+ */
+router.put(
+	"/users/:userId",
+	authenticateToken,
+	authorizeRole("ADMIN"),
+	updateUserByAdmin
+);
+
+/**
+ * DELETE /api/admin/users/:userId
+ * ADMIN: delete user in same company
+ */
+router.delete(
+	"/users/:userId",
+	authenticateToken,
+	authorizeRole("ADMIN"),
+	deleteUserByAdmin
 );
 
 export default router;

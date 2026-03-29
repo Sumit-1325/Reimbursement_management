@@ -46,6 +46,7 @@ export default function UsersTable({ users, onEdit, onSuspend, onDelete }) {
             <TableHead className="px-4 py-3 text-slate-300">Name</TableHead>
             <TableHead className="px-4 py-3 text-slate-300">Email</TableHead>
             <TableHead className="px-4 py-3 text-slate-300">Role</TableHead>
+            <TableHead className="px-4 py-3 text-slate-300">Manager</TableHead>
             <TableHead className="px-4 py-3 text-slate-300">Status</TableHead>
             <TableHead className="px-4 py-3 text-right text-slate-300">Actions</TableHead>
           </TableRow>
@@ -53,7 +54,7 @@ export default function UsersTable({ users, onEdit, onSuspend, onDelete }) {
         <TableBody>
           {users.length === 0 ? (
             <TableRow className="border-slate-800/70">
-              <TableCell colSpan={5} className="py-12 text-center text-slate-400">
+              <TableCell colSpan={6} className="py-12 text-center text-slate-400">
                 No users match your search.
               </TableCell>
             </TableRow>
@@ -67,6 +68,7 @@ export default function UsersTable({ users, onEdit, onSuspend, onDelete }) {
                     {user.role}
                   </Badge>
                 </TableCell>
+                <TableCell className="px-4 py-3 text-slate-300">{user.managerName || "-"}</TableCell>
                 <TableCell className="px-4 py-3">
                   <Badge variant="outline" className={statusBadgeClass(user.status)}>
                     {user.status}

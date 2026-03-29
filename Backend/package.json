@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node dist/index.js",
-    "build": "prisma generate && prisma migrate deploy && tsc",
+    "build": "npx prisma generate && npx prisma migrate deploy && npx tsc",
     "postinstall": "prisma generate",
     "dev": "nodemon src/index.js",
     "db:push": "prisma db push",
@@ -25,9 +25,7 @@
   "author": "Sumit Kumar",
   "license": "ISC",
   "devDependencies": {
-    "nodemon": "^3.1.14",
-    "prisma": "^7.5.0",
-    "typescript": "^5.9.3"
+    "nodemon": "^3.1.14"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.6.0",
@@ -41,6 +39,8 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
     "nodemailer": "^8.0.4",
-    "pg": "^8.20.0"
+    "pg": "^8.20.0",
+    "prisma": "^7.5.0",
+    "typescript": "^5.9.3"
   }
 }

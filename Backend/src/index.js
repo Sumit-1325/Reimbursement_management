@@ -11,6 +11,7 @@ import cookieParser from "cookie-parser";
 import authRoutes from "./routes/auth.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import expenseRoutes from "./routes/expense.routes.js";
+import managerRoutes from "./routes/manager.routes.js";
 
 // ... rest of your server code
 
@@ -72,6 +73,9 @@ app.use("/api/admin", adminRoutes);
 
 // Employee expense routes (draft/submit/history)
 app.use("/api/expenses", expenseRoutes);
+
+// Manager approval routes
+app.use("/api/manager", managerRoutes);
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {

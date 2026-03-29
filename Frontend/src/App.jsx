@@ -6,6 +6,7 @@ import LoginPage from "@/pages/Login"
 import RegistrationPage from "@/pages/Register"
 import AdminDashboard from "@/pages/AdminDashboard"
 import EmployeeDashboard from "@/pages/EmployeeDashboard"
+import ManagerDashboard from "@/pages/ManagerDashboard"
 import UsersPage from "@/pages/Users"
 import AdminApprovalRules from "@/pages/AdminApprovalRules"
 import { Toaster } from "@/components/ui/sonner"
@@ -22,6 +23,10 @@ function RoleBasedDashboardRoute() {
 
   if (user.role === "EMPLOYEE") {
     return <Navigate to="/employee-dashboard" replace />
+  }
+
+  if (user.role === "MANAGER") {
+    return <Navigate to="/manager-dashboard" replace />
   }
 
   return <Navigate to="/admin-dashboard" replace />
@@ -57,6 +62,16 @@ function EmployeeDashboardRoute() {
   return <EmployeeDashboard />
 }
 
+function ManagerDashboardRoute() {
+  const { user, loading } = useUser()
+
+  if (loading) return null
+  if (!user) return <Navigate to="/login" replace />
+  if (user.role !== "MANAGER") return <Navigate to="/dashboard" replace />
+
+  return <ManagerDashboard />
+}
+
 function App() {
   return (
     <UserProvider>
@@ -68,6 +83,7 @@ function App() {
           <Route path="/dashboard" element={<RoleBasedDashboardRoute />} />
           <Route path="/admin-dashboard" element={<AdminDashboard />} />
           <Route path="/employee-dashboard" element={<EmployeeDashboardRoute />} />
+          <Route path="/manager-dashboard" element={<ManagerDashboardRoute />} />
           <Route path="/users" element={<AdminUsersRoute />} />
           <Route path="/approval-rules" element={<AdminApprovalRulesRoute />} />
 

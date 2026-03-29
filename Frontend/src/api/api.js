@@ -20,11 +20,23 @@ api.interceptors.response.use(
     const status = error.response?.status;
 
     // If auth failed (401/403) and not already retried, try refresh once.
-    // Also skip refresh for refresh endpoint itself and logout
-    const isRefreshEndpoint = String(originalRequest?.url).includes("/api/auth/refresh");
-    const isLogoutEndpoint = String(originalRequest?.url).includes("/api/auth/logout");
-    
-    if ((status === 401 || status === 403) && !originalRequest._retry && !isRefreshEndpoint && !isLogoutEndpoint) {
+    // Also skip refresh for refresh endpoint itself, logout, auth endpoints, and /me
+    const requestUrl = String(originalRequest?.url || "");
+    const isRefreshEndpoint = requestUrl.includes("/api/auth/refresh");
+    const isLogoutEndpoint = requestUrl.includes("/api/auth/logout");
+    const isLoginEndpoint = requestUrl.includes("/api/auth/login");
+    const isRegisterEndpoint = requestUrl.includes("/api/auth/register");
+    const isMeEndpoint = requestUrl.includes("/api/auth/me");
+
+    if (
+      (status === 401 || status === 403) &&
+      !originalRequest._retry &&
+      !isRefreshEndpoint &&
+      !isLogoutEndpoint &&
+      !isLoginEndpoint &&
+      !isRegisterEndpoint &&
+      !isMeEndpoint
+    ) {
       originalRequest._retry = true;
 
       try {

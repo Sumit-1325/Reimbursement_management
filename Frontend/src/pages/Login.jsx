@@ -63,7 +63,9 @@ export default function LoginPage() {
 
   // Handle login
   const handleLogin = async (e) => {
-    e.preventDefault()
+    if (e?.preventDefault) {
+      e.preventDefault()
+    }
     setApiError("")
     setSuccessMessage("")
 
@@ -98,6 +100,8 @@ export default function LoginPage() {
       // Redirect immediately to appropriate dashboard based on user role
       if (userRole === "ADMIN") {
         navigate("/admin-dashboard", { replace: true })
+      } else if (userRole === "MANAGER") {
+        navigate("/manager-dashboard", { replace: true })
       } else if (userRole === "EMPLOYEE") {
         navigate("/employee-dashboard", { replace: true })
       } else {
@@ -119,6 +123,7 @@ export default function LoginPage() {
       <div className="absolute bottom-0 left-0 w-80 h-80 bg-purple-500/20 rounded-full blur-3xl -z-10 opacity-30"></div>
 
       <Card variant="professional" className="w-full max-w-md border-l-4 border-l-blue-600 relative z-10">
+        <form onSubmit={handleLogin}>
         <CardHeader className="space-y-1">
           <CardTitle className="text-center text-2xl">Log In</CardTitle>
           <CardDescription className="text-center text-sm">
@@ -188,7 +193,7 @@ export default function LoginPage() {
 
         <CardFooter className="flex flex-col gap-4">
           <Button
-            onClick={handleLogin}
+            type="submit"
             className="w-full"
             variant="success"
             size="lg"
@@ -199,8 +204,7 @@ export default function LoginPage() {
           <Link to="/register" className="text-center text-sm text-primary mb-4 block hover:underline transition-all">
             Don't have an account? Sign up
           </Link>
-        </CardFooter>
-      </Card>
+        </CardFooter>        </form>      </Card>
     </div>
   )
 }

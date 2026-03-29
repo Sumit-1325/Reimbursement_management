@@ -41,6 +41,11 @@ export const adminApi = {
     return response.data;
   },
 
+  getRecentActivities: async () => {
+    const response = await api.get("/api/admin/recent-activities");
+    return response.data;
+  },
+
   assignRuleToExpense: async (ruleId, expenseId) => {
     const response = await api.post(`/api/admin/approval-rules/${ruleId}/assign/${expenseId}`);
     return response.data;

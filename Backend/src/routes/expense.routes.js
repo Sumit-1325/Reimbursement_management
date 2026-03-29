@@ -2,6 +2,7 @@ import express from "express";
 import { authenticateToken } from "../middleware/verify.middleware.js";
 import { authorizeRole } from "../middleware/authorization.middleware.js";
 import {
+  actOnExpenseApproval,
   createExpenseDraftOrSubmit,
   getCompanyEmployeesForExpense,
   getSupportedCurrenciesForExpense,
@@ -10,6 +11,7 @@ import {
   submitDraftExpense,
   updateDraftExpense,
 } from "../controllers/expense.controller.js";
+import { verifyIsApprover } from "../middleware/designation.middleware.js";
 
 const router = express.Router();
 
@@ -36,6 +38,12 @@ router.patch("/:expenseId", authenticateToken, authorizeRole("EMPLOYEE"), update
  * EMPLOYEE: submit own draft expense
  */
 router.patch("/:expenseId/submit", authenticateToken, authorizeRole("EMPLOYEE"), submitDraftExpense);
+
+/**
+ * PATCH /api/expenses/:expenseId/approval-action
+ * APPROVER: approve or reject assigned expense request
+ */
+router.patch("/:expenseId/approval-action", authenticateToken, verifyIsApprover, actOnExpenseApproval);
 
 /**
  * GET /api/expenses/employees

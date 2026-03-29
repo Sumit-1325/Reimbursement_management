@@ -138,7 +138,10 @@ function serializeEmployee(employee) {
 function getDefaultApprovalRuleConfig() {
   return {
     managerFirst: true,
+    approverSequence: true,
+    minimumApprovalPercentage: 100,
     requiredDesignations: ["FINANCE"],
+    requiredApproverIds: [],
   };
 }
 
@@ -155,12 +158,21 @@ function parseApprovalRuleConfig(description) {
 
   try {
     const parsed = JSON.parse(jsonPart);
+    const minPct = Number(parsed?.minimumApprovalPercentage);
     return {
       managerFirst: Boolean(parsed?.managerFirst),
+      approverSequence: parsed?.approverSequence === undefined ? true : Boolean(parsed?.approverSequence),
+      minimumApprovalPercentage:
+        Number.isFinite(minPct) && minPct >= 1 && minPct <= 100 ? Math.round(minPct) : 100,
       requiredDesignations: Array.isArray(parsed?.requiredDesignations)
         ? parsed.requiredDesignations
             .map((item) => String(item || "").trim().toUpperCase())
             .filter((item) => APPROVAL_STEP_DESIGNATIONS.includes(item))
+        : [],
+      requiredApproverIds: Array.isArray(parsed?.requiredApproverIds)
+        ? parsed.requiredApproverIds
+            .map((item) => String(item || "").trim())
+            .filter(Boolean)
         : [],
     };
   } catch (_error) {
@@ -171,8 +183,16 @@ function parseApprovalRuleConfig(description) {
 function serializeApprovalRuleConfig(config) {
   return `${APPROVAL_RULE_CONFIG_PREFIX}${JSON.stringify({
     managerFirst: Boolean(config?.managerFirst),
+    approverSequence: config?.approverSequence === undefined ? true : Boolean(config?.approverSequence),
+    minimumApprovalPercentage:
+      Number.isFinite(Number(config?.minimumApprovalPercentage))
+        ? Math.min(Math.max(Math.round(Number(config.minimumApprovalPercentage)), 1), 100)
+        : 100,
     requiredDesignations: Array.isArray(config?.requiredDesignations)
       ? config.requiredDesignations
+      : [],
+    requiredApproverIds: Array.isArray(config?.requiredApproverIds)
+      ? config.requiredApproverIds
       : [],
   })}`;
 }
@@ -186,6 +206,9 @@ function serializeApprovalRule(rule) {
     name: rule.name,
     status: rule.status,
     managerFirst: config.managerFirst,
+    approverSequence: config.approverSequence,
+    minimumApprovalPercentage: config.minimumApprovalPercentage,
+    requiredApproverIds: config.requiredApproverIds,
     steps: (rule.steps || []).map((step) => ({
       id: step.id,
       sequence: step.sequence,
@@ -798,7 +821,12 @@ export async function updateApprovalRuleByAdmin(req, res) {
     const ruleId = req.params.ruleId;
     const name = String(req.body?.name || "").trim();
     const managerFirst = Boolean(req.body?.managerFirst);
+    const approverSequence = req.body?.approverSequence === undefined ? true : Boolean(req.body?.approverSequence);
+    const minimumApprovalPercentage = Number(req.body?.minimumApprovalPercentage);
     const rawSteps = Array.isArray(req.body?.steps) ? req.body.steps : [];
+    const rawRequiredApproverIds = Array.isArray(req.body?.requiredApproverIds)
+      ? req.body.requiredApproverIds
+      : [];
 
     if (!ruleId) {
       return res.status(400).json({ success: false, message: "ruleId is required" });
@@ -812,11 +840,23 @@ export async function updateApprovalRuleByAdmin(req, res) {
       return res.status(400).json({ success: false, message: "At least one approval step is required" });
     }
 
+    if (!Number.isFinite(minimumApprovalPercentage) || minimumApprovalPercentage < 1 || minimumApprovalPercentage > 100) {
+      return res.status(400).json({ success: false, message: "minimumApprovalPercentage must be between 1 and 100" });
+    }
+
     const steps = rawSteps.map((step, index) => ({
       sequence: index + 1,
       designation: String(step?.designation || "").trim().toUpperCase(),
       required: Boolean(step?.required),
     }));
+
+    const requiredApproverIds = Array.from(
+      new Set(
+        rawRequiredApproverIds
+          .map((id) => String(id || "").trim())
+          .filter(Boolean)
+      )
+    );
 
     const seen = new Set();
     for (const step of steps) {
@@ -833,6 +873,40 @@ export async function updateApprovalRuleByAdmin(req, res) {
         });
       }
       seen.add(step.designation);
+    }
+
+    if (requiredApproverIds.length > 0) {
+      const approvers = await prisma.employee.findMany({
+        where: {
+          id: { in: requiredApproverIds },
+          companyId,
+          status: "ACTIVE",
+          isApprover: true,
+        },
+        select: {
+          id: true,
+          designation: true,
+        },
+      });
+
+      if (approvers.length !== requiredApproverIds.length) {
+        return res.status(400).json({
+          success: false,
+          message: "One or more required approvers are invalid or inactive",
+        });
+      }
+
+      const selectedDesignations = new Set(steps.map((step) => step.designation));
+      const invalidApprover = approvers.find(
+        (approver) => !selectedDesignations.has(String(approver.designation || "").toUpperCase())
+      );
+
+      if (invalidApprover) {
+        return res.status(400).json({
+          success: false,
+          message: "Required approver designation must be part of selected approver steps",
+        });
+      }
     }
 
     const existingRule = await prisma.approvalRule.findFirst({
@@ -862,7 +936,10 @@ export async function updateApprovalRuleByAdmin(req, res) {
           name,
           description: serializeApprovalRuleConfig({
             managerFirst,
+            approverSequence,
+            minimumApprovalPercentage,
             requiredDesignations,
+            requiredApproverIds,
           }),
           steps: {
             create: steps.map((step) => ({
@@ -925,6 +1002,9 @@ export async function getPendingExpensesByAdmin(req, res) {
       where: {
         companyId,
         status: "PENDING",
+        approvalRequests: {
+          none: {},
+        },
       },
       orderBy: {
         submittedAt: "desc",
@@ -991,6 +1071,146 @@ export async function getPendingExpensesByAdmin(req, res) {
 }
 
 /**
+ * GET /api/admin/recent-activities
+ * ADMIN gets recent admin activities including rule changes and assignment events
+ */
+export async function getRecentActivitiesByAdmin(req, res) {
+  try {
+    const adminId = req.userId;
+    const jwtCompanyId = req.companyId;
+    const { companyId } = await getValidatedAdminContext(adminId, jwtCompanyId);
+
+    const [rules, approvalRequests, submittedExpenses] = await Promise.all([
+      prisma.approvalRule.findMany({
+        where: {
+          companyId,
+          status: "ACTIVE",
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 20,
+        include: {
+          steps: true,
+        },
+      }),
+      prisma.approvalRequest.findMany({
+        where: {
+          expense: {
+            companyId,
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 200,
+        select: {
+          expenseId: true,
+          createdAt: true,
+          expense: {
+            select: {
+              id: true,
+              employee: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      prisma.expense.findMany({
+        where: {
+          companyId,
+          status: "PENDING",
+        },
+        orderBy: { submittedAt: "desc" },
+        take: 20,
+        select: {
+          id: true,
+          submittedAt: true,
+          employee: {
+            select: {
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const assignmentByExpenseId = new Map();
+    for (const item of approvalRequests) {
+      if (!item.expenseId || assignmentByExpenseId.has(item.expenseId)) {
+        continue;
+      }
+      assignmentByExpenseId.set(item.expenseId, item);
+    }
+
+    const assignmentActivities = Array.from(assignmentByExpenseId.values()).map((item) => {
+      const employeeName = `${item.expense?.employee?.firstName || ""} ${item.expense?.employee?.lastName || ""}`.trim() || "Unknown";
+      return {
+        actor: "Admin",
+        action: `generated approval chain for claim ${item.expense?.id || item.expenseId} (${employeeName})`,
+        type: "success",
+        at: item.createdAt,
+      };
+    });
+
+    const ruleActivities = rules.map((rule) => {
+      const wasUpdated = rule.createdAt?.getTime() !== rule.updatedAt?.getTime();
+      const stepCount = Array.isArray(rule.steps) ? rule.steps.length : 0;
+      return {
+        actor: "Admin",
+        action: wasUpdated
+          ? `updated approval rule "${rule.name}" with ${stepCount} step${stepCount === 1 ? "" : "s"}`
+          : `created approval rule "${rule.name}" with ${stepCount} step${stepCount === 1 ? "" : "s"}`,
+        type: "default",
+        at: wasUpdated ? rule.updatedAt : rule.createdAt,
+      };
+    });
+
+    const submittedActivities = submittedExpenses.map((expense) => {
+      const employeeName = `${expense.employee?.firstName || ""} ${expense.employee?.lastName || ""}`.trim() || "Unknown";
+      return {
+        actor: employeeName,
+        action: `submitted expense claim ${expense.id}`,
+        type: "default",
+        at: expense.submittedAt,
+      };
+    });
+
+    const activities = [...assignmentActivities, ...ruleActivities, ...submittedActivities]
+      .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+      .slice(0, 25);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        activities,
+      },
+    });
+  } catch (error) {
+    if (error.message === "ADMIN_NOT_FOUND") {
+      return res.status(401).json({ success: false, message: "Admin not found" });
+    }
+    if (error.message === "ADMIN_INACTIVE") {
+      return res.status(403).json({ success: false, message: "Inactive admin cannot access activities" });
+    }
+    if (error.message === "ADMIN_REQUIRED") {
+      return res.status(403).json({ success: false, message: "Only ADMIN can access activities" });
+    }
+    if (error.message === "COMPANY_CONTEXT_MISSING") {
+      return res.status(400).json({ success: false, message: "Company context missing for admin" });
+    }
+
+    console.error("Get recent activities by admin error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch recent activities",
+      error: error.message,
+    });
+  }
+}
+
+/**
  * POST /api/admin/approval-rules/:ruleId/assign/:expenseId
  * ADMIN generates approval request chain for a pending expense
  */
@@ -1020,6 +1240,7 @@ export async function assignApprovalRuleToExpenseByAdmin(req, res) {
           id: true,
           companyId: true,
           status: true,
+          ocrData: true,
           employee: {
             select: {
               id: true,
@@ -1072,6 +1293,7 @@ export async function assignApprovalRuleToExpenseByAdmin(req, res) {
 
     const config = parseApprovalRuleConfig(rule.description);
     const requiredSet = new Set(config.requiredDesignations || []);
+    const requiredApproverIdSet = new Set(config.requiredApproverIds || []);
 
     const chain = [];
     const usedApproverIds = new Set();
@@ -1088,6 +1310,7 @@ export async function assignApprovalRuleToExpenseByAdmin(req, res) {
       chain.push({
         approverId: employeeManager.id,
         requiredDesignation: "MANAGER",
+        required: requiredSet.has("MANAGER") || requiredApproverIdSet.has(employeeManager.id),
       });
       usedApproverIds.add(employeeManager.id);
     }
@@ -1101,39 +1324,40 @@ export async function assignApprovalRuleToExpenseByAdmin(req, res) {
 
       const isRequired = requiredSet.has(designation);
 
-      const approver = await prisma.employee.findFirst({
+      const approvers = await prisma.employee.findMany({
         where: {
           companyId,
           status: "ACTIVE",
           isApprover: true,
           designation,
         },
-        select: {
-          id: true,
-        },
+        select: { id: true },
         orderBy: { createdAt: "asc" },
       });
 
-      if (!approver && isRequired) {
+      if (approvers.length === 0 && isRequired) {
         return res.status(400).json({
           success: false,
           message: `Required approver for designation ${designation} not found`,
         });
       }
 
-      if (!approver) {
+      if (approvers.length === 0) {
         continue;
       }
 
-      if (usedApproverIds.has(approver.id)) {
-        continue;
-      }
+      for (const approver of approvers) {
+        if (usedApproverIds.has(approver.id)) {
+          continue;
+        }
 
-      chain.push({
-        approverId: approver.id,
-        requiredDesignation: designation,
-      });
-      usedApproverIds.add(approver.id);
+        chain.push({
+          approverId: approver.id,
+          requiredDesignation: designation,
+          required: isRequired || requiredApproverIdSet.has(approver.id),
+        });
+        usedApproverIds.add(approver.id);
+      }
     }
 
     if (chain.length === 0) {
@@ -1143,9 +1367,12 @@ export async function assignApprovalRuleToExpenseByAdmin(req, res) {
       });
     }
 
-    const approvalRequests = await prisma.$transaction(
-      chain.map((entry, index) =>
-        prisma.approvalRequest.create({
+    const approvalRequests = await prisma.$transaction(async (tx) => {
+      const createdRequests = [];
+
+      for (let index = 0; index < chain.length; index += 1) {
+        const entry = chain[index];
+        const request = await tx.approvalRequest.create({
           data: {
             expenseId,
             approverId: entry.approverId,
@@ -1160,9 +1387,43 @@ export async function assignApprovalRuleToExpenseByAdmin(req, res) {
             requiredDesignation: true,
             status: true,
           },
-        })
-      )
-    );
+        });
+        createdRequests.push(request);
+      }
+
+      const existingApprovalLog = Array.isArray(expense?.ocrData?.approvalLog)
+        ? expense.ocrData.approvalLog
+        : [];
+
+      await tx.expense.update({
+        where: { id: expenseId },
+        data: {
+          ocrData: {
+            ...(expense.ocrData || {}),
+            approvalConfigSnapshot: {
+              managerFirst: config.managerFirst,
+              approverSequence: config.approverSequence,
+              minimumApprovalPercentage: config.minimumApprovalPercentage,
+              requiredDesignations: Array.from(requiredSet),
+              requiredApproverIds: Array.from(requiredApproverIdSet),
+              cfoOverrideEnabled: true,
+            },
+            approvalLog: [
+              ...existingApprovalLog,
+              {
+                action: "APPROVAL_CHAIN_GENERATED",
+                actorName: "System",
+                actorRole: "ADMIN",
+                comment: "Approval chain generated from configured approval rule",
+                at: new Date().toISOString(),
+              },
+            ],
+          },
+        },
+      });
+
+      return createdRequests;
+    });
 
     return res.status(201).json({
       success: true,

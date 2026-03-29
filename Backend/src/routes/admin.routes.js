@@ -8,6 +8,7 @@ import {
 	getAllUsersByAdmin,
 	getApprovalRulesByAdmin,
 	getPendingExpensesByAdmin,
+	getRecentActivitiesByAdmin,
 	updateApprovalRuleByAdmin,
 	updateUserByAdmin,
 } from "../controllers/admin.controller.js";
@@ -84,6 +85,17 @@ router.get(
 	authenticateToken,
 	authorizeRole("ADMIN"),
 	getPendingExpensesByAdmin
+);
+
+/**
+ * GET /api/admin/recent-activities
+ * ADMIN: list recent rule and assignment activities
+ */
+router.get(
+	"/recent-activities",
+	authenticateToken,
+	authorizeRole("ADMIN"),
+	getRecentActivitiesByAdmin
 );
 
 /**

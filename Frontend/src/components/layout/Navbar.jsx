@@ -1,11 +1,10 @@
 import { useEffect, useState, memo } from "react"
-import { useNavigate, Link } from "react-router-dom"
+import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { 
   NavigationMenu, 
   NavigationMenuItem, 
-  NavigationMenuLink, 
   NavigationMenuList, 
   navigationMenuTriggerStyle 
 } from "@/components/ui/navigation-menu"
@@ -18,7 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { FiMenu, FiX, FiHome, FiUsers, FiBarChart2, FiSettings, FiLogOut, FiUser } from "react-icons/fi"
+import { FiMenu, FiHome, FiUsers, FiLogOut, FiUser } from "react-icons/fi"
 import { useUser } from "@/context/UserContext"
 import { authApi } from "@/api/authApi"
 
@@ -139,24 +138,6 @@ function Navbar({ hideUsers = false }) {
                     </button>
                   </NavigationMenuItem>
                 )}
-                <NavigationMenuItem>
-                  <button 
-                    className={`${navigationMenuTriggerStyle()} text-white hover:text-purple-400 transition-colors gap-2 flex items-center cursor-pointer opacity-50`}
-                    disabled
-                  >
-                    <FiBarChart2 className="w-4 h-4" />
-                    Analytics
-                  </button>
-                </NavigationMenuItem>
-                <NavigationMenuItem>
-                  <button 
-                    className={`${navigationMenuTriggerStyle()} text-white hover:text-purple-400 transition-colors gap-2 flex items-center cursor-pointer opacity-50`}
-                    disabled
-                  >
-                    <FiSettings className="w-4 h-4" />
-                    Settings
-                  </button>
-                </NavigationMenuItem>
               </NavigationMenuList>
             </NavigationMenu>
           </nav>
@@ -229,11 +210,6 @@ function Navbar({ hideUsers = false }) {
                     <FiLogOut className="w-4 h-4 mr-2" />
                     {isLoggingOut ? "Logging out..." : "Log Out"}
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator className="bg-purple-500/20" />
-                  <DropdownMenuItem className="text-white hover:bg-purple-600/20 cursor-pointer">
-                    <FiSettings className="w-4 h-4 mr-2" />
-                    Account Settings
-                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -292,20 +268,6 @@ function Navbar({ hideUsers = false }) {
                           Users
                         </button>
                       )}
-                      <button 
-                        disabled
-                        className="text-white hover:text-purple-400 transition-colors font-medium flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-purple-600/10 opacity-50"
-                      >
-                        <FiBarChart2 className="w-5 h-5" />
-                        Analytics
-                      </button>
-                      <button 
-                        disabled
-                        className="text-white hover:text-purple-400 transition-colors font-medium flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-purple-600/10 opacity-50"
-                      >
-                        <FiSettings className="w-5 h-5" />
-                        Settings
-                      </button>
                     </nav>
 
                     {/* Mobile User Section */}

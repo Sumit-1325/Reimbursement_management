@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from "react-router-dom"
 import { memo, useState } from "react"
-import { Activity, BarChart3, FileText, Settings, UsersIcon } from "lucide-react"
+import { BarChart3, UsersIcon } from "lucide-react"
 import { FiLogOut } from "react-icons/fi"
 import { cn } from "@/lib/utils"
 import { useUser } from "@/context/UserContext"
@@ -18,7 +18,7 @@ function navLinkClass({ isActive }) {
 function SideNavbar({ hideUsers = false }) {
   const navigate = useNavigate()
   const [isLoggingOut, setIsLoggingOut] = useState(false)
-  const { logout, user } = useUser()
+  const { logout } = useUser()
 
   const handleLogout = () => {
     if (isLoggingOut) return
@@ -66,26 +66,6 @@ function SideNavbar({ hideUsers = false }) {
                 <span>Users</span>
               </NavLink>
             )}
-            <button type="button" className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 transition-all text-sm font-medium">
-              <Activity className="w-4 h-4 flex-shrink-0" />
-              <span>Activity</span>
-            </button>
-          </div>
-        </div>
-
-        <div>
-          <p className="px-4 text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">
-            Management
-          </p>
-          <div className="space-y-1">
-            <button type="button" className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 transition-all text-sm font-medium">
-              <FileText className="w-4 h-4 flex-shrink-0" />
-              <span>Reports</span>
-            </button>
-            <button type="button" className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 transition-all text-sm font-medium">
-              <Settings className="w-4 h-4 flex-shrink-0" />
-              <span>Settings</span>
-            </button>
           </div>
         </div>
       </nav>

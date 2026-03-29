@@ -3,6 +3,7 @@ import { authenticateToken } from "../middleware/verify.middleware.js";
 import { authorizeRole } from "../middleware/authorization.middleware.js";
 import {
 	assignApprovalRuleToExpenseByAdmin,
+	backfillApprovalConditionsByAdmin,
 	createUserByAdmin,
 	deleteUserByAdmin,
 	getAllUsersByAdmin,
@@ -74,6 +75,17 @@ router.put(
 	authenticateToken,
 	authorizeRole("ADMIN"),
 	updateApprovalRuleByAdmin
+);
+
+/**
+ * POST /api/admin/approval-rules/backfill-conditions
+ * ADMIN: backfill ApprovalCondition rows from rule config
+ */
+router.post(
+	"/approval-rules/backfill-conditions",
+	authenticateToken,
+	authorizeRole("ADMIN"),
+	backfillApprovalConditionsByAdmin
 );
 
 /**

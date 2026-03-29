@@ -197,6 +197,19 @@ function serializeApprovalRuleConfig(config) {
   })}`;
 }
 
+function buildApprovalConditionsFromConfig(config) {
+  // Keep rule-level conditions only. Step-level designation flow belongs to ApprovalStep,
+  // not ApprovalCondition.
+  return [{
+    conditionType: "PERCENTAGE_RULE",
+    percentage: Number.isFinite(Number(config?.minimumApprovalPercentage))
+      ? Math.min(Math.max(Math.round(Number(config.minimumApprovalPercentage)), 1), 100)
+      : 100,
+    specificDesignation: null,
+    action: "AUTO_APPROVE",
+  }];
+}
+
 function serializeApprovalRule(rule) {
   const config = parseApprovalRuleConfig(rule.description);
   const requiredSet = new Set(config.requiredDesignations || []);
@@ -209,6 +222,13 @@ function serializeApprovalRule(rule) {
     approverSequence: config.approverSequence,
     minimumApprovalPercentage: config.minimumApprovalPercentage,
     requiredApproverIds: config.requiredApproverIds,
+    conditions: (rule.conditions || []).map((condition) => ({
+      id: condition.id,
+      conditionType: condition.conditionType,
+      percentage: condition.percentage,
+      specificDesignation: condition.specificDesignation,
+      action: condition.action,
+    })),
     steps: (rule.steps || []).map((step) => ({
       id: step.id,
       sequence: step.sequence,
@@ -227,6 +247,7 @@ async function ensureDefaultApprovalRule(companyId) {
       status: "ACTIVE",
     },
     include: {
+      conditions: true,
       steps: {
         orderBy: { sequence: "asc" },
       },
@@ -239,12 +260,16 @@ async function ensureDefaultApprovalRule(companyId) {
   }
 
   const config = getDefaultApprovalRuleConfig();
+  const conditions = buildApprovalConditionsFromConfig(config);
   return prisma.approvalRule.create({
     data: {
       companyId,
       name: "Default Expense Rule",
       status: "ACTIVE",
       description: serializeApprovalRuleConfig(config),
+      conditions: {
+        create: conditions,
+      },
       steps: {
         create: [
           {
@@ -259,6 +284,7 @@ async function ensureDefaultApprovalRule(companyId) {
       },
     },
     include: {
+      conditions: true,
       steps: {
         orderBy: { sequence: "asc" },
       },
@@ -772,6 +798,7 @@ export async function getApprovalRulesByAdmin(req, res) {
         status: "ACTIVE",
       },
       include: {
+        conditions: true,
         steps: {
           orderBy: { sequence: "asc" },
         },
@@ -803,6 +830,94 @@ export async function getApprovalRulesByAdmin(req, res) {
     return res.status(500).json({
       success: false,
       message: "Failed to fetch approval rules",
+      error: error.message,
+    });
+  }
+}
+
+/**
+ * POST /api/admin/approval-rules/backfill-conditions
+ * ADMIN backfills ApprovalCondition rows for existing company rules
+ */
+export async function backfillApprovalConditionsByAdmin(req, res) {
+  try {
+    const adminId = req.userId;
+    const jwtCompanyId = req.companyId;
+    const { companyId } = await getValidatedAdminContext(adminId, jwtCompanyId);
+
+    const rules = await prisma.approvalRule.findMany({
+      where: {
+        companyId,
+        status: "ACTIVE",
+      },
+      include: {
+        conditions: true,
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    if (rules.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "No active approval rules found",
+        data: {
+          updatedRules: 0,
+        },
+      });
+    }
+
+    let updatedRules = 0;
+
+    await prisma.$transaction(async (tx) => {
+      for (const rule of rules) {
+        const config = parseApprovalRuleConfig(rule.description);
+        const nextConditions = buildApprovalConditionsFromConfig(config);
+
+        await tx.approvalCondition.deleteMany({
+          where: { ruleId: rule.id },
+        });
+
+        if (nextConditions.length > 0) {
+          await tx.approvalCondition.createMany({
+            data: nextConditions.map((condition) => ({
+              ruleId: rule.id,
+              conditionType: condition.conditionType,
+              percentage: condition.percentage,
+              specificDesignation: condition.specificDesignation,
+              action: condition.action,
+            })),
+          });
+        }
+
+        updatedRules += 1;
+      }
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Approval conditions backfilled successfully",
+      data: {
+        updatedRules,
+      },
+    });
+  } catch (error) {
+    if (error.message === "ADMIN_NOT_FOUND") {
+      return res.status(401).json({ success: false, message: "Admin not found" });
+    }
+    if (error.message === "ADMIN_INACTIVE") {
+      return res.status(403).json({ success: false, message: "Inactive admin cannot backfill approval conditions" });
+    }
+    if (error.message === "ADMIN_REQUIRED") {
+      return res.status(403).json({ success: false, message: "Only ADMIN can backfill approval conditions" });
+    }
+    if (error.message === "COMPANY_CONTEXT_MISSING") {
+      return res.status(400).json({ success: false, message: "Company context missing for admin" });
+    }
+
+    console.error("Backfill approval conditions by admin error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to backfill approval conditions",
       error: error.message,
     });
   }
@@ -925,8 +1040,22 @@ export async function updateApprovalRuleByAdmin(req, res) {
       .filter((step) => step.required)
       .map((step) => step.designation);
 
+    const nextConfig = {
+      managerFirst,
+      approverSequence,
+      minimumApprovalPercentage,
+      requiredDesignations,
+      requiredApproverIds,
+    };
+
+    const conditions = buildApprovalConditionsFromConfig(nextConfig);
+
     const updatedRule = await prisma.$transaction(async (tx) => {
       await tx.approvalStep.deleteMany({
+        where: { ruleId },
+      });
+
+      await tx.approvalCondition.deleteMany({
         where: { ruleId },
       });
 
@@ -934,13 +1063,10 @@ export async function updateApprovalRuleByAdmin(req, res) {
         where: { id: ruleId },
         data: {
           name,
-          description: serializeApprovalRuleConfig({
-            managerFirst,
-            approverSequence,
-            minimumApprovalPercentage,
-            requiredDesignations,
-            requiredApproverIds,
-          }),
+          description: serializeApprovalRuleConfig(nextConfig),
+          conditions: {
+            create: conditions,
+          },
           steps: {
             create: steps.map((step) => ({
               sequence: step.sequence,
@@ -949,6 +1075,7 @@ export async function updateApprovalRuleByAdmin(req, res) {
           },
         },
         include: {
+          conditions: true,
           steps: {
             orderBy: { sequence: "asc" },
           },
@@ -1359,10 +1486,7 @@ export async function assignApprovalRuleToExpenseByAdmin(req, res) {
 
     for (const step of rule.steps) {
       const designation = step.requiredDesignation;
-
-      if (designation === "MANAGER" && config.managerFirst) {
-        continue;
-      }
+      const isManagerStep = String(designation || "").toUpperCase() === "MANAGER";
 
       const isRequired = requiredSet.has(designation);
 
@@ -1389,6 +1513,11 @@ export async function assignApprovalRuleToExpenseByAdmin(req, res) {
       }
 
       for (const approver of approvers) {
+        // When manager-first is enabled, keep the MANAGER step and only skip the direct manager duplicate.
+        if (config.managerFirst && isManagerStep && expense.employee?.manager?.id === approver.id) {
+          continue;
+        }
+
         if (usedApproverIds.has(approver.id)) {
           continue;
         }

@@ -47,13 +47,9 @@ function canManagerSeeRequest(request) {
     ? [...request.expense.approvalRequests].sort((a, b) => a.sequence - b.sequence)
     : [];
 
-  const sequenceEnabled = isApproverSequenceEnabled(request.expense);
-  if (sequenceEnabled) {
-    const firstPending = allRequests.find((item) => item.status === "PENDING");
-    if (firstPending && firstPending.id !== request.id) {
-      return false;
-    }
-  }
+  const managerFirstValue = request?.expense?.ocrData?.approvalConfigSnapshot?.managerFirst;
+  const managerFirstEnabled = managerFirstValue === undefined ? true : Boolean(managerFirstValue);
+  const isManagerStep = String(request?.requiredDesignation || "").toUpperCase() === "MANAGER";
 
   const employeeManagerId = request?.expense?.employee?.managerId || null;
   if (employeeManagerId && request.approverId !== employeeManagerId) {
@@ -64,6 +60,19 @@ function canManagerSeeRequest(request) {
 
     // If employee manager's request exists and is NOT approved, hide this request from other managers
     if (employeeManagerRequest && employeeManagerRequest.status !== "APPROVED") {
+      return false;
+    }
+
+    // Once manager-first is satisfied, show all remaining manager-step approvals.
+    if (managerFirstEnabled && isManagerStep) {
+      return true;
+    }
+  }
+
+  const sequenceEnabled = isApproverSequenceEnabled(request.expense);
+  if (sequenceEnabled) {
+    const firstPending = allRequests.find((item) => item.status === "PENDING");
+    if (firstPending && firstPending.id !== request.id) {
       return false;
     }
   }

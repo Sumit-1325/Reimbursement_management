@@ -228,6 +228,7 @@ function getApprovalSnapshot(expense) {
   const minPct = Number(snapshot?.minimumApprovalPercentage);
 
   return {
+    managerFirst: snapshot?.managerFirst === undefined ? true : Boolean(snapshot.managerFirst),
     approverSequence: snapshot?.approverSequence === undefined ? true : Boolean(snapshot.approverSequence),
     minimumApprovalPercentage:
       Number.isFinite(minPct) && minPct >= 1 && minPct <= 100 ? Math.round(minPct) : 100,
@@ -260,7 +261,11 @@ function getApprovalEvaluation(approvalRequests, snapshot) {
   const approvedRequests = approvalRequests.filter((item) => item.status === "APPROVED").length;
   const rejectedRequests = approvalRequests.filter((item) => item.status === "REJECTED").length;
   const pendingRequests = approvalRequests.filter((item) => item.status === "PENDING").length;
-  const approvedPercentage = totalRequests === 0 ? 0 : (approvedRequests / totalRequests) * 100;
+  const approvedPercentageRaw = totalRequests === 0 ? 0 : (approvedRequests / totalRequests) * 100;
+  const approvedPercentage = Number(approvedPercentageRaw.toFixed(2));
+  const threshold = Number.isFinite(Number(snapshot.minimumApprovalPercentage))
+    ? Number(snapshot.minimumApprovalPercentage)
+    : 100;
 
   const requiredPending = approvalRequests.some(
     (item) => requiredApproverIdSet.has(item.approverId) && item.status === "PENDING"
@@ -272,13 +277,25 @@ function getApprovalEvaluation(approvalRequests, snapshot) {
     (item) => item.status === "APPROVED" && String(item.approver?.designation || "").toUpperCase() === "CFO"
   );
 
-  const meetsThreshold = approvedPercentage >= snapshot.minimumApprovalPercentage;
+  const meetsThreshold = approvedPercentage >= threshold;
 
   if (snapshot.cfoOverrideEnabled && cfoApproved) {
     return {
       finalStatus: "APPROVED",
       workflowState: "APPROVED",
       reason: "CFO_OVERRIDE",
+      approvedPercentage,
+      requiredPending,
+      requiredRejected,
+    };
+  }
+
+  // Keep workflow pending while approvers are still pending so configured steps can act.
+  if (pendingRequests > 0) {
+    return {
+      finalStatus: "PENDING",
+      workflowState: "WAITING_APPROVAL",
+      reason: rejectedRequests > 0 ? "WAITING_REMAINING_APPROVALS_AFTER_REJECTION" : "WAITING_REMAINING_APPROVALS",
       approvedPercentage,
       requiredPending,
       requiredRejected,
@@ -317,15 +334,6 @@ function getApprovalEvaluation(approvalRequests, snapshot) {
       requiredRejected,
     };
   }
-
-  return {
-    finalStatus: "PENDING",
-    workflowState: "WAITING_APPROVAL",
-    reason: rejectedRequests > 0 ? "WAITING_REMAINING_APPROVALS_AFTER_REJECTION" : "WAITING_REMAINING_APPROVALS",
-    approvedPercentage,
-    requiredPending,
-    requiredRejected,
-  };
 }
 
 async function getApproverContext(userId, jwtCompanyId) {
@@ -971,6 +979,11 @@ export async function actOnExpenseApproval(req, res) {
           companyId,
         },
         include: {
+          employee: {
+            select: {
+              managerId: true,
+            },
+          },
           approvalRequests: {
             orderBy: { sequence: "asc" },
             include: {
@@ -1007,7 +1020,22 @@ export async function actOnExpenseApproval(req, res) {
       if (snapshot.approverSequence) {
         const firstPending = expense.approvalRequests.find((item) => item.status === "PENDING");
         const isCfoApprover = String(approver.designation || "").toUpperCase() === "CFO";
-        if (!isCfoApprover && firstPending && firstPending.id !== myRequest.id) {
+        const managerFirstEnabled = snapshot.managerFirst === undefined ? true : Boolean(snapshot.managerFirst);
+        const employeeManagerId = expense?.employee?.managerId || null;
+        const isEmployeeManager = Boolean(employeeManagerId) && approver.id === employeeManagerId;
+        const employeeManagerRequest = employeeManagerId
+          ? expense.approvalRequests.find((item) => item.approverId === employeeManagerId)
+          : null;
+        const employeeManagerApproved = employeeManagerRequest ? employeeManagerRequest.status === "APPROVED" : true;
+        const isManagerStep = String(myRequest.requiredDesignation || "").toUpperCase() === "MANAGER";
+
+        const canBypassSequenceForManagerStep =
+          managerFirstEnabled &&
+          isManagerStep &&
+          !isEmployeeManager &&
+          employeeManagerApproved;
+
+        if (!isCfoApprover && !canBypassSequenceForManagerStep && firstPending && firstPending.id !== myRequest.id) {
           throw new Error("SEQUENCE_NOT_ALLOWED");
         }
       }

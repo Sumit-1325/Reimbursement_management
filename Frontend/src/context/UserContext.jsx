@@ -17,8 +17,11 @@ export const UserProvider = ({ children }) => {
       setError(null)
       return response.data.employee
     } catch (err) {
-      console.error("Failed to fetch user in context:", err)
-      setError(err)
+      // 401 is expected when not logged in - silently ignore
+      if (err.response?.status !== 401) {
+        console.error("Failed to fetch user in context:", err)
+        setError(err)
+      }
       setUser(null)
       return null
     } finally {

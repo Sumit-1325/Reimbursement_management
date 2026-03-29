@@ -4,6 +4,8 @@ import { UserProvider } from "@/context/UserContext"
 import { useUser } from "@/context/UserContext"
 import LoginPage from "@/pages/Login"
 import RegistrationPage from "@/pages/Register"
+import ForgotPassword from "@/pages/ForgotPassword"
+import ResetPassword from "@/pages/ResetPassword"
 import AdminDashboard from "@/pages/AdminDashboard"
 import EmployeeDashboard from "@/pages/EmployeeDashboard"
 import ManagerDashboard from "@/pages/ManagerDashboard"
@@ -79,6 +81,8 @@ function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegistrationPage />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password/:token" element={<ResetPassword />} />
 
           <Route path="/dashboard" element={<RoleBasedDashboardRoute />} />
           <Route path="/admin-dashboard" element={<AdminDashboard />} />

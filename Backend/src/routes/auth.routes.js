@@ -10,6 +10,8 @@ import {
   refreshToken,
   logout,
   getCurrentUser,
+    forgotPassword,
+    resetPassword
 } from "../controllers/auth.controller.js";
 import { authenticateToken } from "../middleware/verify.middleware.js";
 
@@ -65,5 +67,8 @@ router.post("/logout", authenticateToken, logout);
  * Protected endpoint - Get current user profile
  */
 router.get("/me", authenticateToken, getCurrentUser);
+
+router.post("/forgot-password", forgotPassword);
+router.post("/reset-password/:token", resetPassword);
 
 export default router;

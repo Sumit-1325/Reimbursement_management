@@ -4,8 +4,10 @@
  */
 
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 import { generateToken, generateRefreshTokenString, getRefreshTokenExpiry } from "../utils/auth.js";
 import { prisma } from "../lib/prisma.js";
+import { sendEmail } from "../utils/mail.js";
 
 /**
  * Register a new user - Auto-creates company from country
@@ -467,6 +469,173 @@ export async function getCurrentUser(req, res) {
     return res.status(500).json({
       success: false,
       message: "Failed to fetch user",
+      error: error.message,
+    });
+  }
+}
+
+
+export const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    // Check if JWT_SECRET is configured
+    if (!process.env.JWT_SECRET) {
+      console.error("JWT_SECRET not configured in .env");
+      return res.status(500).json({
+        success: false,
+        message: "Server configuration error: JWT_SECRET not set",
+      });
+    }
+
+    // Normalize email to lowercase
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    const user = await prisma.employee.findFirst({
+      where: { email: normalizedEmail },
+      select: {
+        id: true,
+        email: true,
+      },
+    });
+
+    // Keep response generic to avoid exposing account existence.
+    if (!user) {
+      return res.status(200).json({
+        success: true,
+        message: "If an account exists with that email, a reset link has been sent.",
+      });
+    }
+
+    let resetToken;
+    try {
+      resetToken = jwt.sign(
+        { id: user.id, type: "password-reset" },
+        process.env.JWT_SECRET,
+        { expiresIn: "15m" }
+      );
+    } catch (jwtError) {
+      console.error("JWT signing error:", jwtError);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to generate reset token",
+        error: jwtError.message,
+      });
+    }
+
+    const frontendBaseUrl = (process.env.FRONTEND_URL || "http://localhost:5173").split(",")[0].trim();
+    const resetUrl = `${frontendBaseUrl}/reset-password/${resetToken}`;
+
+    const htmlContent = `
+      <h1>Password Reset</h1>
+      <p>You requested a password reset. Click the link below to set a new password:</p>
+      <a href="${resetUrl}" style="background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Reset Password</a>
+      <p>This link expires in 15 minutes.</p>
+      <p>If you did not request this, please ignore this email.</p>
+    `;
+
+    await sendEmail({
+      to: email,
+      subject: "Password Reset Request",
+      html: htmlContent,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "If an account exists with that email, a reset link has been sent.",
+    });
+  } catch (error) {
+    console.error("Forgot password error:", error);
+
+    if (error?.code === "MAIL_CONFIG_MISSING") {
+      return res.status(400).json({
+        success: false,
+        message: "Email service is not configured yet. Please set MAIL_HOST, MAIL_PORT, MAIL_USER, and MAIL_PASS in backend .env.",
+        error: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send password reset email",
+      error: error.message,
+    });
+  }
+};
+
+// ============================================
+// RESET PASSWORD - Set new password using token
+// ============================================
+export const resetPassword = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { password } = req.body;
+
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: "Reset token is required",
+      });
+    }
+
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: "New password is required",
+      });
+    }
+
+    if (String(password).length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters",
+      });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (verifyError) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired reset token",
+      });
+    }
+
+    if (!decoded?.id || decoded?.type !== "password-reset") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid reset token",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await prisma.employee.update({
+      where: { id: decoded.id },
+      data: {
+        password: hashedPassword,
+        refreshToken: null,
+        refreshTokenExpiry: null,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset successful. You can now login with your new password.",
+    });
+  } catch (error) {
+    console.error("Reset password error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to reset password",
       error: error.message,
     });
   }

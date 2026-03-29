@@ -1,0 +1,48 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+
+generator client {
+  provider   = "prisma-client-js"
+  output     = "../src/lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// USER & AUTHENTICATION MODELS
+// ============================================
+
+model User {
+  id                  String      @id @default(cuid())
+  email               String      @unique
+  password            String
+  firstName           String
+  lastName            String?
+  
+  // Profile info
+  avatar              String?
+  bio                 String?
+  jobTitle            String?
+  department          String?
+  
+  // Role & Status
+  role                String      @default("PARTICIPANT") // ADMIN, PARTICIPANT
+  status              String      @default("ACTIVE")      // ACTIVE, INACTIVE, SUSPENDED, BANNED
+  
+  // Refresh Token
+  refreshToken        String?
+  refreshTokenExpiry  DateTime?
+  
+  // Timestamps
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  @@index([email])
+  @@index([role])
+  @@index([status])
+}
+
+

@@ -22,13 +22,11 @@ enum EmployeeRole {
 }
 
 enum Designation {
+  EMPLOYEE
   FINANCE
   DIRECTOR
   CFO
-  HR
-  OPERATIONS
   MANAGER
-  CUSTOM
 }
 
 enum EmployeeStatus {
@@ -91,7 +89,7 @@ model Employee {
   
   // Role & Designation
   role                EmployeeRole    @default(EMPLOYEE)      // ADMIN, MANAGER, EMPLOYEE
-  designation         String          @default("EMPLOYEE")    // FINANCE, DIRECTOR, CFO, HR, etc.
+  designation         Designation     @default(EMPLOYEE)      // EMPLOYEE, FINANCE, DIRECTOR, CFO, MANAGER
   
   // Manager relationship (self-referential)
   managerId           String?
@@ -133,19 +131,19 @@ model Employee {
 // EXPENSE TRACKING MODELS
 // ============================================
 
-enum ExpenseStatus {
-  PENDING
-  APPROVED
-  REJECTED
-}
-
-enum ExpenseCategory {
+enum ExpenseCategoryType {
   TRAVEL
   MEALS
   OFFICE_SUPPLIES
   ACCOMMODATION
   TRANSPORT
   OTHER
+}
+
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 model Expense {
@@ -162,7 +160,7 @@ model Expense {
   amount                Decimal       @db.Decimal(10, 2)
   currencyCode          String        // Original currency code
   amountInBaseCurrency  Decimal       @db.Decimal(10, 2)  // Converted to company's base currency
-  category              ExpenseCategory
+  category              ExpenseCategoryType
   description           String
   date                  DateTime      // When expense occurred
   

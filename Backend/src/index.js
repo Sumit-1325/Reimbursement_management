@@ -8,7 +8,7 @@ dotenv.config(); // ← also first line here
 
 import express from "express";
 import cors from "cors";
-import authRoutes from "./routes/auth.js";
+import authRoutes from "./routes/auth.routes.js";
 import adminRoutes from "./routes/admin.js";
 import userRoutes from "./routes/user.js";
 
@@ -61,7 +61,14 @@ app.use((req, res, next) => {
 // ROUTES
 // ============================================
 
+// Auth routes (register, login, refresh, logout)
+app.use("/api/auth", authRoutes);
 
+// Admin routes
+app.use("/api/admin", adminRoutes);
+
+// User routes
+app.use("/api/user", userRoutes);
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {

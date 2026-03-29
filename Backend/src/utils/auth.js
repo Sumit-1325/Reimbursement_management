@@ -15,7 +15,7 @@ const JWT_EXPIRY = process.env.JWT_EXPIRY || "7d";
 
 /**
  * Generate JWT token for user
- * @param {Object} user - User object with id, email, role
+ * @param {Object} user - User object with all required fields
  * @returns {string} JWT token
  */
 export function generateToken(user) {
@@ -23,7 +23,14 @@ export function generateToken(user) {
     {
       id: user.id,
       email: user.email,
+      companyId: user.companyId,
       role: user.role,
+      designation: user.designation,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      isManager: user.isManager,
+      isApprover: user.isApprover,
+      managerId: user.managerId,
     },
     JWT_SECRET,
     { expiresIn: JWT_EXPIRY }

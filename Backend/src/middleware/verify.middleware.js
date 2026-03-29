@@ -23,6 +23,8 @@ export function authenticateToken(req, res, next) {
   try {
     const decoded = verifyToken(token);
     req.user = decoded;
+    req.companyId = decoded.companyId;
+    req.userId = decoded.id;
     next();
   } catch (error) {
     return res.status(403).json({

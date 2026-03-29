@@ -57,12 +57,12 @@ function canManagerSeeRequest(request) {
 
   const employeeManagerId = request?.expense?.employee?.managerId || null;
   if (employeeManagerId && request.approverId !== employeeManagerId) {
+    // Check if the employee's direct manager has approved
     const employeeManagerRequest = allRequests.find(
-      (item) =>
-        item.approverId === employeeManagerId &&
-        String(item.requiredDesignation || "").toUpperCase() === "MANAGER"
+      (item) => item.approverId === employeeManagerId
     );
 
+    // If employee manager's request exists and is NOT approved, hide this request from other managers
     if (employeeManagerRequest && employeeManagerRequest.status !== "APPROVED") {
       return false;
     }
@@ -177,4 +177,92 @@ export async function getApprovalsToReviewByManager(req, res) {
  */
 export async function actOnApprovalByManager(req, res) {
   return actOnExpenseApproval(req, res);
+}
+
+/**
+ * GET /api/manager/approval-history
+ * MANAGER gets their own approval history (approvals/rejections made)
+ */
+export async function getApprovalHistoryByManager(req, res) {
+  try {
+    const managerId = req.userId;
+    const jwtCompanyId = req.companyId;
+    const { manager, companyId } = await getValidatedManagerContext(managerId, jwtCompanyId);
+
+    let approvalHistories = [];
+    
+    try {
+      approvalHistories = await prisma.approvalHistory.findMany({
+        where: {
+          approverId: manager.id,
+        },
+        orderBy: { actionAt: "desc" },
+        take: 50,
+        include: {
+          expense: {
+            include: {
+              employee: true,
+            },
+          },
+        },
+      });
+    } catch (prismaError) {
+      console.error("Prisma query error in getApprovalHistoryByManager:", prismaError);
+      throw prismaError;
+    }
+
+    // Filter by company to ensure security
+    const filtered = approvalHistories.filter((item) => {
+      return item?.expense?.companyId === companyId;
+    });
+
+    const history = filtered.map((item) => {
+      const employee = item.expense?.employee;
+      const employeeName = `${employee?.firstName || ""} ${employee?.lastName || ""}`.trim() || "Unknown";
+      const actionLower = String(item.action || "").toLowerCase();
+      const statusType = actionLower === "approved" ? "success" : actionLower === "rejected" ? "error" : "default";
+
+      return {
+        id: item.id,
+        action: actionLower,
+        comment: item.comment || null,
+        expenseId: item.expense?.id,
+        description: item.expense?.description,
+        amount: Number(item.expense?.amountInBaseCurrency || 0),
+        employeeName,
+        statusType,
+        actedAt: item.actionAt,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        history,
+      },
+    });
+  } catch (error) {
+    if (error.message === "MANAGER_NOT_FOUND") {
+      return res.status(401).json({ success: false, message: "Manager not found" });
+    }
+    if (error.message === "MANAGER_INACTIVE") {
+      return res.status(403).json({ success: false, message: "Inactive manager cannot access history" });
+    }
+    if (error.message === "MANAGER_ROLE_REQUIRED") {
+      return res.status(403).json({ success: false, message: "Only MANAGER can access approval history" });
+    }
+    if (error.message === "MANAGER_APPROVER_REQUIRED") {
+      return res.status(403).json({ success: false, message: "Manager is not configured as approver" });
+    }
+    if (error.message === "COMPANY_CONTEXT_MISSING") {
+      return res.status(400).json({ success: false, message: "Company context missing" });
+    }
+
+    console.error("Get approval history by manager error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch approval history",
+      error: error.message,
+    });
+  }
 }

@@ -10,4 +10,9 @@ export const managerApi = {
     const response = await api.patch(`/api/manager/approvals/${expenseId}/action`, payload);
     return response.data;
   },
+
+  getApprovalHistory: async () => {
+    const response = await api.get("/api/manager/approval-history");
+    return response.data;
+  },
 };

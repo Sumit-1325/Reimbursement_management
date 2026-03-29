@@ -4,6 +4,7 @@ import { authorizeRole } from "../middleware/authorization.middleware.js";
 import {
   actOnApprovalByManager,
   getApprovalsToReviewByManager,
+  getApprovalHistoryByManager,
 } from "../controllers/manager.controller.js";
 
 const router = express.Router();
@@ -28,6 +29,17 @@ router.patch(
   authenticateToken,
   authorizeRole("MANAGER"),
   actOnApprovalByManager
+);
+
+/**
+ * GET /api/manager/approval-history
+ * MANAGER: view their own approval history (approvals/rejections made)
+ */
+router.get(
+  "/approval-history",
+  authenticateToken,
+  authorizeRole("MANAGER"),
+  getApprovalHistoryByManager
 );
 
 export default router;

@@ -1080,7 +1080,7 @@ export async function getRecentActivitiesByAdmin(req, res) {
     const jwtCompanyId = req.companyId;
     const { companyId } = await getValidatedAdminContext(adminId, jwtCompanyId);
 
-    const [rules, approvalRequests, submittedExpenses] = await Promise.all([
+    const [rules, approvalRequests, submittedExpenses, approvalHistories] = await Promise.all([
       prisma.approvalRule.findMany({
         where: {
           companyId,
@@ -1134,6 +1134,46 @@ export async function getRecentActivitiesByAdmin(req, res) {
           },
         },
       }),
+      prisma.approvalHistory.findMany({
+        where: {
+          approvalRequest: {
+            expense: {
+              companyId,
+            },
+          },
+        },
+        orderBy: { actedAt: "desc" },
+        take: 50,
+        select: {
+          id: true,
+          action: true,
+          actedAt: true,
+          comments: true,
+          approvalRequest: {
+            select: {
+              id: true,
+              approverId: true,
+              expense: {
+                select: {
+                  id: true,
+                  employee: {
+                    select: {
+                      firstName: true,
+                      lastName: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          actor: {
+            select: {
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      }),
     ]);
 
     const assignmentByExpenseId = new Map();
@@ -1177,9 +1217,23 @@ export async function getRecentActivitiesByAdmin(req, res) {
       };
     });
 
-    const activities = [...assignmentActivities, ...ruleActivities, ...submittedActivities]
+    const approvalActivities = approvalHistories.map((history) => {
+      const employeeName = `${history.approvalRequest?.expense?.employee?.firstName || ""} ${history.approvalRequest?.expense?.employee?.lastName || ""}`.trim() || "Unknown";
+      const actorName = `${history.actor?.firstName || ""} ${history.actor?.lastName || ""}`.trim() || "Unknown";
+      const actionLower = String(history.action || "").toLowerCase();
+      const statusType = actionLower === "approved" ? "success" : actionLower === "rejected" ? "error" : "default";
+      
+      return {
+        actor: actorName,
+        action: `${actionLower} expense claim ${history.approvalRequest?.expense?.id} (${employeeName})`,
+        type: statusType,
+        at: history.actedAt,
+      };
+    });
+
+    const activities = [...assignmentActivities, ...ruleActivities, ...submittedActivities, ...approvalActivities]
       .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
-      .slice(0, 25);
+      .slice(0, 30);
 
     return res.status(200).json({
       success: true,

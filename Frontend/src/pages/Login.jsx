@@ -79,7 +79,6 @@ export default function LoginPage() {
         password: formData.password,
       })
 
-      // Note: tokens are already stored by authApi.login()
       // Get user role from response for direct dashboard routing
       const userRole = response.data?.employee?.role
 
@@ -89,11 +88,6 @@ export default function LoginPage() {
       }
 
       setSuccessMessage("Login successful! Redirecting to dashboard...")
-
-      // Refresh in background to keep context fully synced, without blocking redirect.
-      refreshUser().catch((err) => {
-        console.error("Background user refresh failed:", err)
-      })
 
       // Clear form
       setFormData({

@@ -18,10 +18,6 @@ export const UserProvider = ({ children }) => {
       return response.data.employee
     } catch (err) {
       console.error("Failed to fetch user in context:", err)
-      if (err?.response?.status === 401 || err?.response?.status === 403) {
-        localStorage.removeItem("accessToken")
-        localStorage.removeItem("refreshToken")
-      }
       setError(err)
       setUser(null)
       return null
@@ -34,39 +30,13 @@ export const UserProvider = ({ children }) => {
   const logout = useCallback(() => {
     setUser(null)
     setError(null)
-    localStorage.removeItem('accessToken')
-    localStorage.removeItem('refreshToken')
   }, [])
 
-  // Initial fetch on mount
+  // Initial fetch on mount - try to get user via cookies
   useEffect(() => {
-    const token = localStorage.getItem("accessToken")
-
-    // Skip /me call on public pages when user is not logged in.
-    if (!token) {
-      setLoading(false)
-      return
-    }
-
+    // Only run once on mount to check for existing session
     refreshUser()
-  }, [refreshUser])
-
-  // Listen for storage changes (logout from another tab)
-  useEffect(() => {
-    const handleStorageChange = () => {
-      const token = localStorage.getItem("accessToken")
-      if (!token && user) {
-        // Token removed, logout happened
-        setUser(null)
-      } else if (token && !user && !loading) {
-        // Token added back, refetch user
-        refreshUser()
-      }
-    }
-
-    window.addEventListener("storage", handleStorageChange)
-    return () => window.removeEventListener("storage", handleStorageChange)
-  }, [user, loading, refreshUser])
+  }, []) // Empty array - runs only once on mount
 
   return (
     <UserContext.Provider value={{ user, loading, error, setUser, refreshUser, logout }}>

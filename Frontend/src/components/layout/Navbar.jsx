@@ -98,8 +98,7 @@ function Navbar({ hideUsers = false }) {
           {/* Logo Section */}
           <button
             onClick={() => {
-              const route = user?.role === "ADMIN" ? "/admin-dashboard" : "/user-dashboard"
-              navigate(route)
+              navigate("/dashboard")
             }}
             className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer"
           >
@@ -118,7 +117,9 @@ function Navbar({ hideUsers = false }) {
               <NavigationMenuList className="gap-2">
                 <NavigationMenuItem>
                   <button 
-                    onClick={() => navigate("/dashboard")}
+                    onClick={() => {
+                      navigate("/dashboard")
+                    }}
                     className={`${navigationMenuTriggerStyle()} text-white hover:text-purple-400 transition-colors gap-2 flex items-center cursor-pointer`}
                   >
                     <FiHome className="w-4 h-4" />
@@ -128,8 +129,8 @@ function Navbar({ hideUsers = false }) {
                 {!hideUsers && (
                   <NavigationMenuItem>
                     <button 
-                      onClick={() => navigate("/users")}
-                      className={`${navigationMenuTriggerStyle()} text-white hover:text-purple-400 transition-colors gap-2 flex items-center cursor-pointer`}
+                      className={`${navigationMenuTriggerStyle()} text-white hover:text-purple-400 transition-colors gap-2 flex items-center cursor-pointer opacity-50`}
+                      disabled
                     >
                       <FiUsers className="w-4 h-4" />
                       Users
@@ -138,8 +139,8 @@ function Navbar({ hideUsers = false }) {
                 )}
                 <NavigationMenuItem>
                   <button 
-                    onClick={() => navigate("/analytics")}
-                    className={`${navigationMenuTriggerStyle()} text-white hover:text-purple-400 transition-colors gap-2 flex items-center cursor-pointer`}
+                    className={`${navigationMenuTriggerStyle()} text-white hover:text-purple-400 transition-colors gap-2 flex items-center cursor-pointer opacity-50`}
+                    disabled
                   >
                     <FiBarChart2 className="w-4 h-4" />
                     Analytics
@@ -147,8 +148,8 @@ function Navbar({ hideUsers = false }) {
                 </NavigationMenuItem>
                 <NavigationMenuItem>
                   <button 
-                    onClick={() => navigate("/settings")}
-                    className={`${navigationMenuTriggerStyle()} text-white hover:text-purple-400 transition-colors gap-2 flex items-center cursor-pointer`}
+                    className={`${navigationMenuTriggerStyle()} text-white hover:text-purple-400 transition-colors gap-2 flex items-center cursor-pointer opacity-50`}
+                    disabled
                   >
                     <FiSettings className="w-4 h-4" />
                     Settings
@@ -165,11 +166,13 @@ function Navbar({ hideUsers = false }) {
               <Button 
                 variant="outline" 
                 size="sm"
-                onClick={() => navigate("/profile")}
+                onClick={() => {
+                  navigate("/dashboard")
+                }}
                 className="gap-2 text-purple-400 hover:text-purple-300 hover:bg-purple-600/10 border-purple-600/30 hover:border-purple-600/50"
               >
                 <FiUser className="w-4 h-4" />
-                My Profile
+                Dashboard
               </Button>
             </div>
 
@@ -208,11 +211,13 @@ function Navbar({ hideUsers = false }) {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56 bg-slate-900 border-purple-500/30">
                   <DropdownMenuItem
-                    onSelect={() => navigate("/profile")}
+                    onSelect={() => {
+                      navigate("/dashboard")
+                    }}
                     className="text-white hover:bg-purple-600/20 cursor-pointer"
                   >
-                    <FiUser className="w-4 h-4 mr-2" />
-                    View Profile
+                    <FiHome className="w-4 h-4 mr-2" />
+                    Dashboard
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onSelect={isLoggingOut ? undefined : handleLogout}
@@ -253,12 +258,12 @@ function Navbar({ hideUsers = false }) {
                       className="gap-2 text-purple-400 hover:text-purple-300 hover:bg-purple-600/20 border-purple-600/30 hover:border-purple-600/50 justify-start"
                       variant="outline"
                       onClick={() => {
-                        navigate("/profile")
+                        navigate("/dashboard")
                         setIsOpen(false)
                       }}
                     >
                       <FiUser className="w-4 h-4" />
-                      My Profile
+                      Dashboard
                     </Button>
                     
                     {/* Mobile Navigation Links */}
@@ -275,32 +280,23 @@ function Navbar({ hideUsers = false }) {
                       </button>
                       {!hideUsers && (
                         <button 
-                          onClick={() => {
-                            navigate("/users")
-                            setIsOpen(false)
-                          }}
-                          className="text-white hover:text-purple-400 transition-colors font-medium flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-purple-600/10"
+                          disabled
+                          className="text-white hover:text-purple-400 transition-colors font-medium flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-purple-600/10 opacity-50"
                         >
                           <FiUsers className="w-5 h-5" />
                           Users
                         </button>
                       )}
                       <button 
-                        onClick={() => {
-                          navigate("/analytics")
-                          setIsOpen(false)
-                        }}
-                        className="text-white hover:text-purple-400 transition-colors font-medium flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-purple-600/10"
+                        disabled
+                        className="text-white hover:text-purple-400 transition-colors font-medium flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-purple-600/10 opacity-50"
                       >
                         <FiBarChart2 className="w-5 h-5" />
                         Analytics
                       </button>
                       <button 
-                        onClick={() => {
-                          navigate("/settings")
-                          setIsOpen(false)
-                        }}
-                        className="text-white hover:text-purple-400 transition-colors font-medium flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-purple-600/10"
+                        disabled
+                        className="text-white hover:text-purple-400 transition-colors font-medium flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-purple-600/10 opacity-50"
                       >
                         <FiSettings className="w-5 h-5" />
                         Settings
@@ -325,13 +321,13 @@ function Navbar({ hideUsers = false }) {
                       </div>
                       <button 
                         onClick={() => {
-                          navigate("/profile")
+                          navigate("/dashboard")
                           setIsOpen(false)
                         }}
                         className="text-white hover:text-purple-400 transition-colors font-medium flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-purple-600/10 mb-2"
                       >
-                        <FiUser className="w-5 h-5" />
-                        View Profile
+                        <FiHome className="w-5 h-5" />
+                        Dashboard
                       </button>
                       <button
                         onClick={handleLogout}

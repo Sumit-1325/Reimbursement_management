@@ -7,6 +7,7 @@ import "dotenv/config";
 
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import authRoutes from "./routes/auth.routes.js";
 
 // ... rest of your server code
@@ -28,6 +29,9 @@ const ALLOWED_ORIGINS = FRONTEND_URL
 // Body parser middleware
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
+
+// Cookie parser middleware
+app.use(cookieParser());
 
 // CORS middleware
 app.use(

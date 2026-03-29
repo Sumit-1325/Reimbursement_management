@@ -7,11 +7,16 @@ import { verifyToken } from "../utils/auth.js";
 
 /**
  * Middleware to verify JWT and attach user to request
- * Extracts Bearer token from Authorization header
+ * Extracts token from cookies or Authorization header
  */
 export function authenticateToken(req, res, next) {
-  const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
+  // Try to get token from cookies first, then from Authorization header
+  let token = req.cookies?.accessToken;
+  
+  if (!token) {
+    const authHeader = req.headers["authorization"];
+    token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
+  }
 
   if (!token) {
     return res.status(401).json({

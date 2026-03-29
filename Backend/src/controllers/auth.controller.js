@@ -154,6 +154,21 @@ export async function register(req, res) {
       };
     });
 
+    // Set cookies with tokens
+    res.cookie("accessToken", tokens.accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    res.cookie("refreshToken", tokens.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    });
+
     return res.status(201).json({
       success: true,
       message: "User registered successfully",
@@ -173,7 +188,6 @@ export async function register(req, res) {
           country: company.country,
           baseCurrency: company.baseCurrency,
         },
-        tokens,
       },
     });
   } catch (error) {
@@ -261,6 +275,21 @@ export async function login(req, res) {
       },
     });
 
+    // Set cookies with tokens
+    res.cookie("accessToken", tokens.accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    res.cookie("refreshToken", tokens.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    });
+
     return res.status(200).json({
       success: true,
       message: "Login successful",
@@ -274,7 +303,6 @@ export async function login(req, res) {
           role: employee.role,
           designation: employee.designation,
         },
-        tokens,
       },
     });
   } catch (error) {
@@ -458,7 +486,8 @@ export async function createEmployeeByAdmin(req, res) {
  */
 export async function refreshToken(req, res) {
   try {
-    const { refreshToken: refreshTokenValue } = req.body;
+    // Get refresh token from cookies or request body
+    const refreshTokenValue = req.cookies?.refreshToken || req.body?.refreshToken;
 
     if (!refreshTokenValue) {
       return res.status(400).json({
@@ -487,6 +516,14 @@ export async function refreshToken(req, res) {
     // Generate new access token
     const newAccessToken = generateToken(employee);
 
+    // Set new access token cookie
+    res.cookie("accessToken", newAccessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
     return res.status(200).json({
       success: true,
       message: "Token refreshed successfully",
@@ -505,7 +542,7 @@ export async function refreshToken(req, res) {
 }
 
 /**
- * Logout user (invalidate refresh token)
+ * Logout user (invalidate refresh token and clear cookies)
  */
 export async function logout(req, res) {
   try {
@@ -518,6 +555,19 @@ export async function logout(req, res) {
         refreshToken: null,
         refreshTokenExpiry: null,
       },
+    });
+
+    // Clear cookies
+    res.clearCookie("accessToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+    });
+
+    res.clearCookie("refreshToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
     });
 
     return res.status(200).json({

@@ -10,7 +10,6 @@ import UsersSearchBar from "@/components/users/UsersSearchBar"
 import UsersTable from "@/components/users/UsersTable"
 import UserFormDialog from "@/components/users/UserFormDialog"
 import { useUser } from "@/context/UserContext"
-import { adminApi } from "@/api/adminApi"
 
 export default function UsersPage() {
   const { user } = useUser()

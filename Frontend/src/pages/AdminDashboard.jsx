@@ -17,55 +17,19 @@ import StatCard from "@/components/dashboard/StatCard"
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed"
 import { QuickActions } from "@/components/dashboard/QuickActions"
 import { useUser } from "@/context/UserContext"
-import { adminApi } from "@/api/adminApi"
 
 export default function AdminDashboard() {
   const { user } = useUser()
-  const [dashboardData, setDashboardData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [loading, setLoading] = useState(false)
 
-  // Fetch dashboard data on component mount
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        setLoading(true)
-        // Fetch users with limit to get total count
-        const response = await adminApi.getAllUsers(1, 100)
-        
-        if (response.success) {
-          const { users, pagination } = response.data
-          
-          // Calculate stats from real data
-          const totalUsers = pagination.total
-          const activeUsers = users.filter(u => u.status === "ACTIVE").length
-          const admins = users.filter(u => u.role === "ADMIN").length
-          const participants = users.filter(u => u.role === "PARTICIPANT").length
-
-          setDashboardData({
-            totalUsers,
-            activeUsers,
-            admins,
-            participants,
-            users,
-          })
-          setError(null)
-        } else {
-          throw new Error(response.message || "Failed to fetch dashboard data")
-        }
-      } catch (err) {
-        console.error("Error fetching dashboard data:", err)
-        setError(err.message)
-        toast.error("Failed to load dashboard data", {
-          description: err.message,
-        })
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchDashboardData()
-  }, [])
+  // Dummy data for admin dashboard
+  const dashboardData = {
+    totalUsers: 42,
+    activeUsers: 28,
+    admins: 3,
+    participants: 39,
+    users: [],
+  }
 
   // Dynamic stats based on real data
   const stats = dashboardData ? [
@@ -195,57 +159,34 @@ export default function AdminDashboard() {
               </p>
             </div>
 
-            {/* Loading State */}
-            {loading && (
-              <div className="flex items-center justify-center py-12">
-                <div className="text-center">
-                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
-                  <p className="text-slate-400">Loading dashboard data...</p>
-                </div>
-              </div>
-            )}
-
-            {/* Error State */}
-            {error && !loading && (
-              <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-4 mb-8">
-                <p className="text-red-400">
-                  ⚠️ Failed to load dashboard: {error}
-                </p>
-              </div>
-            )}
-
             {/* Stat Cards Grid */}
-            {!loading && stats.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                {stats.map((stat, idx) => (
-                  <StatCard key={idx} {...stat} />
-                ))}
-              </div>
-            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              {stats.map((stat, idx) => (
+                <StatCard key={idx} {...stat} />
+              ))}
+            </div>
 
             {/* Main Content Grid */}
-            {!loading && dashboardData && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Activity Feed - takes 2 columns on large screens */}
-                <div className="lg:col-span-2">
-                  <ActivityFeed
-                    title="Recent Activity"
-                    description="Latest updates from your system"
-                    activities={activityFeed}
-                    maxHeight="max-h-96"
-                  />
-                </div>
-
-                {/* Quick Actions - takes 1 column on large screens */}
-                <div>
-                  <QuickActions
-                    title="Quick Actions"
-                    description="Fast access to common tasks"
-                    actions={quickActions}
-                  />
-                </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Activity Feed - takes 2 columns on large screens */}
+              <div className="lg:col-span-2">
+                <ActivityFeed
+                  title="Recent Activity"
+                  description="Latest updates from your system"
+                  activities={activityFeed}
+                  maxHeight="max-h-96"
+                />
               </div>
-            )}
+
+              {/* Quick Actions - takes 1 column on large screens */}
+              <div>
+                <QuickActions
+                  title="Quick Actions"
+                  description="Fast access to common tasks"
+                  actions={quickActions}
+                />
+              </div>
+            </div>
           </div>
         </main>
       </div>

@@ -3,14 +3,11 @@
  * Initializes the server, connects to database, and starts listening
  */
 
-import dotenv from "dotenv";
-dotenv.config(); // ← also first line here
+import "dotenv/config";
 
 import express from "express";
 import cors from "cors";
 import authRoutes from "./routes/auth.routes.js";
-import adminRoutes from "./routes/admin.js";
-import userRoutes from "./routes/user.js";
 
 // ... rest of your server code
 
@@ -63,12 +60,6 @@ app.use((req, res, next) => {
 
 // Auth routes (register, login, refresh, logout)
 app.use("/api/auth", authRoutes);
-
-// Admin routes
-app.use("/api/admin", adminRoutes);
-
-// User routes
-app.use("/api/user", userRoutes);
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {

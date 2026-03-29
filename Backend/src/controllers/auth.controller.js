@@ -14,9 +14,13 @@ export async function register(req, res) {
   try {
     const { email, password, firstName, lastName, country, companyName } = req.body;
     const normalizedEmail = email?.trim().toLowerCase();
+    const normalizedFirstName = firstName?.trim();
+    const normalizedLastName = lastName?.trim();
+    const normalizedCountry = country?.trim();
+    const normalizedCompanyName = companyName?.trim();
 
     // Validation
-    if (!normalizedEmail || !password || !firstName || !lastName || !country || !companyName) {
+    if (!normalizedEmail || !password || !normalizedFirstName || !normalizedLastName || !normalizedCountry || !normalizedCompanyName) {
       return res.status(400).json({
         success: false,
         message: "email, password, firstName, lastName, country, and companyName are required",
@@ -45,50 +49,29 @@ export async function register(req, res) {
     // Fetch country details from API for currency
     let currency = "USD";
     try {
-      const response = await fetch("https://restcountries.com/v3.1/all");
+      const response = await fetch("https://restcountries.com/v3.1/all?fields=name,currencies");
       const countries = await response.json();
       const countryData = countries.find(
-        (c) => c.name?.common?.toLowerCase() === country.toLowerCase()
+        (c) => c.name?.common?.toLowerCase() === normalizedCountry.toLowerCase()
       );
       
       if (countryData && countryData.currencies) {
         currency = Object.keys(countryData.currencies)[0] || "USD";
       }
+
+      // Validate base currency against exchange rate provider; fallback to USD if unsupported.
+      const rateCheck = await fetch(`https://api.exchangerate-api.com/v4/latest/${currency}`);
+      if (!rateCheck.ok) {
+        currency = "USD";
+      }
     } catch (error) {
       console.log("Country API error, using USD as default:", error.message);
     }
 
-    // Create company
-    const company = await prisma.company.create({
-      data: {
-        name: companyName.trim(),
-        country,
-        currency,
-        baseCurrency: currency,
-        status: "ACTIVE",
-      },
-    });
-
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create employee (as ADMIN for first user)
-    const employee = await prisma.employee.create({
-      data: {
-        email: normalizedEmail,
-        password: hashedPassword,
-        firstName,
-        lastName,
-        role: "ADMIN",
-        designation: "DIRECTOR",
-        companyId: company.id,
-        isManager: true,
-        isApprover: true,
-        status: "ACTIVE",
-      },
-    });
-
-    // Create default expense categories
+    // Create company + admin + defaults atomically to avoid partial records on failure
     const categories = [
       { name: "Travel" },
       { name: "Meals & Entertainment" },
@@ -98,48 +81,77 @@ export async function register(req, res) {
       { name: "Other" },
     ];
 
-    await prisma.expenseCategory.createMany({
-      data: categories.map((cat) => ({
-        name: cat.name,
-        companyId: company.id,
-        isActive: true,
-      })),
-    });
+    const { company, employee, tokens } = await prisma.$transaction(async (tx) => {
+      const createdCompany = await tx.company.create({
+        data: {
+          name: normalizedCompanyName,
+          country: normalizedCountry,
+          currency,
+          baseCurrency: currency,
+          status: "ACTIVE",
+        },
+      });
 
-    // Create default approval rule
-    await prisma.approvalRule.create({
-      data: {
-        name: "Default Approval Rule",
-        description: "Default approval flow for newly created company",
-        companyId: company.id,
-        status: "ACTIVE",
-      },
-    });
+      const createdEmployee = await tx.employee.create({
+        data: {
+          email: normalizedEmail,
+          password: hashedPassword,
+          firstName: normalizedFirstName,
+          lastName: normalizedLastName,
+          role: "ADMIN",
+          designation: "EMPLOYEE",
+          companyId: createdCompany.id,
+          isManager: true,
+          isApprover: true,
+          status: "ACTIVE",
+        },
+      });
 
-    // Create company settings
-    await prisma.companySettings.create({
-      data: {
-        companyId: company.id,
-        enableOCR: true,
-        requireReceiptAboveAmount: 0,
-        maxExpenseAmount: 10000,
-      },
-    });
+      await tx.expenseCategory.createMany({
+        data: categories.map((cat) => ({
+          name: cat.name,
+          companyId: createdCompany.id,
+          isActive: true,
+        })),
+      });
 
-    // Generate tokens
-    const tokens = {
-      accessToken: generateToken(employee),
-      refreshToken: generateRefreshTokenString(),
-    };
+      await tx.approvalRule.create({
+        data: {
+          name: "Default Approval Rule",
+          description: "Default approval flow for newly created company",
+          companyId: createdCompany.id,
+          status: "ACTIVE",
+        },
+      });
 
-    // Store refresh token
-    const refreshTokenExpiry = getRefreshTokenExpiry();
-    await prisma.employee.update({
-      where: { id: employee.id },
-      data: {
-        refreshToken: tokens.refreshToken,
-        refreshTokenExpiry,
-      },
+      await tx.companySettings.create({
+        data: {
+          companyId: createdCompany.id,
+          enableOCR: true,
+          requireReceiptAboveAmount: 0,
+          maxExpenseAmount: 10000,
+        },
+      });
+
+      const createdTokens = {
+        accessToken: generateToken(createdEmployee),
+        refreshToken: generateRefreshTokenString(),
+      };
+
+      const refreshTokenExpiry = getRefreshTokenExpiry();
+      await tx.employee.update({
+        where: { id: createdEmployee.id },
+        data: {
+          refreshToken: createdTokens.refreshToken,
+          refreshTokenExpiry,
+        },
+      });
+
+      return {
+        company: createdCompany,
+        employee: createdEmployee,
+        tokens: createdTokens,
+      };
     });
 
     return res.status(201).json({

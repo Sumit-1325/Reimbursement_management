@@ -96,10 +96,12 @@ export default function LoginPage() {
       })
 
       // Redirect immediately to appropriate dashboard based on user role
-      if (userRole === 'ADMIN') {
+      if (userRole === "ADMIN") {
         navigate("/admin-dashboard", { replace: true })
+      } else if (userRole === "EMPLOYEE") {
+        navigate("/employee-dashboard", { replace: true })
       } else {
-        navigate("/user-dashboard", { replace: true })
+        navigate("/dashboard", { replace: true })
       }
     } catch (error) {
       const errorMessage = error.response?.data?.message || "Login failed. Please try again."

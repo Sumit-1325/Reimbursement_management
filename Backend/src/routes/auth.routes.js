@@ -10,10 +10,8 @@ import {
   refreshToken,
   logout,
   getCurrentUser,
-  createEmployeeByAdmin,
 } from "../controllers/auth.controller.js";
 import { authenticateToken } from "../middleware/verify.middleware.js";
-import { authorizeRole } from "../middleware/authorization.middleware.js";
 
 const router = express.Router();
 
@@ -67,12 +65,5 @@ router.post("/logout", authenticateToken, logout);
  * Protected endpoint - Get current user profile
  */
 router.get("/me", authenticateToken, getCurrentUser);
-
-/**
- * POST /api/auth/users
- * Protected endpoint - ADMIN creates employee in same company
- * Company is always resolved from admin JWT/server context.
- */
-router.post("/users", authenticateToken, authorizeRole("ADMIN"), createEmployeeByAdmin);
 
 export default router;

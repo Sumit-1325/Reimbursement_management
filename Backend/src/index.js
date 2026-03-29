@@ -9,6 +9,7 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import authRoutes from "./routes/auth.routes.js";
+import adminRoutes from "./routes/admin.routes.js";
 
 // ... rest of your server code
 
@@ -64,6 +65,9 @@ app.use((req, res, next) => {
 
 // Auth routes (register, login, refresh, logout)
 app.use("/api/auth", authRoutes);
+
+// Admin routes (admin-only user management)
+app.use("/api/admin", adminRoutes);
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {

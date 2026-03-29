@@ -14,6 +14,7 @@ import { useUser } from "@/context/UserContext"
 export default function UsersPage() {
   const { user } = useUser()
   const [search, setSearch] = useState("")
+  const [allUsers, setAllUsers] = useState([])
   const [users, setUsers] = useState([])
   const [totalUsers, setTotalUsers] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -52,37 +53,69 @@ export default function UsersPage() {
       ...u,
     }))
 
-  // Fetch users from backend (full list when search is empty, search endpoint otherwise)
+  const getInitialUsers = () =>
+    transformUsers([
+      {
+        id: "u1",
+        firstName: "Aman",
+        lastName: "Sharma",
+        email: "aman@example.com",
+        role: "ADMIN",
+        status: "ACTIVE",
+        bio: "Platform administrator",
+      },
+      {
+        id: "u2",
+        firstName: "Neha",
+        lastName: "Verma",
+        email: "neha@example.com",
+        role: "PARTICIPANT",
+        status: "ACTIVE",
+        bio: "Finance team",
+      },
+      {
+        id: "u3",
+        firstName: "Rohan",
+        lastName: "Patel",
+        email: "rohan@example.com",
+        role: "PARTICIPANT",
+        status: "SUSPENDED",
+        bio: "Operations",
+      },
+    ])
+
+  // Initialize local data (no admin API dependency)
   useEffect(() => {
-    const delay = setTimeout(async () => {
-      try {
-        setLoading(true)
+    const seed = getInitialUsers()
+    setAllUsers(seed)
+    setUsers(seed)
+    setTotalUsers(seed.length)
+    setLoading(false)
+    setError(null)
+  }, [])
 
-        const query = search.trim()
-        const response = query
-          ? await adminApi.searchUsers(query, 1, 100)
-          : await adminApi.getAllUsers(1, 100)
+  // Local search filter
+  useEffect(() => {
+    const query = search.trim().toLowerCase()
+    if (!query) {
+      setUsers(allUsers)
+      setTotalUsers(allUsers.length)
+      return
+    }
 
-        if (response.success) {
-          setUsers(transformUsers(response.data.users))
-          setTotalUsers(response.data.pagination?.total || response.data.users.length)
-          setError(null)
-        } else {
-          throw new Error(response.message || "Failed to fetch users")
-        }
-      } catch (err) {
-        console.error("Error fetching users:", err)
-        setError(err.message)
-        toast.error("Failed to load users", {
-          description: err.message,
-        })
-      } finally {
-        setLoading(false)
-      }
-    }, 350)
+    const filtered = allUsers.filter((u) => {
+      const fullName = `${u.firstName || ""} ${u.lastName || ""}`.toLowerCase()
+      return (
+        fullName.includes(query) ||
+        String(u.email || "").toLowerCase().includes(query) ||
+        String(u.role || "").toLowerCase().includes(query) ||
+        String(u.status || "").toLowerCase().includes(query)
+      )
+    })
 
-    return () => clearTimeout(delay)
-  }, [search])
+    setUsers(filtered)
+    setTotalUsers(filtered.length)
+  }, [search, allUsers])
 
   const handleOpenAddModal = () => {
     setModalMode("add")
@@ -161,16 +194,13 @@ export default function UsersPage() {
           bio: form.bio.trim() || null,
         }
 
-        const response = await adminApi.createUser(payload)
-        const createdUser = response?.data?.user
-
-        if (!createdUser) {
-          throw new Error("Created user data missing in response")
+        const createdUser = {
+          id: `${Date.now()}`,
+          ...payload,
         }
 
         const normalizedNewUser = transformUsers([createdUser])[0]
-        setUsers((prev) => [normalizedNewUser, ...prev])
-        setTotalUsers((prev) => prev + 1)
+        setAllUsers((prev) => [normalizedNewUser, ...prev])
 
         setIsModalOpen(false)
 
@@ -190,16 +220,15 @@ export default function UsersPage() {
           bio: form.bio.trim(),
         }
 
-        const response = await adminApi.updateUser(editingUserId, payload)
-        const updated = response?.data?.user
-
-        if (!updated) {
-          throw new Error("Updated user data missing in response")
+        const updated = {
+          id: editingUserId,
+          ...payload,
         }
-
         const normalizedUpdatedUser = transformUsers([updated])[0]
 
-        setUsers((prev) => prev.map((item) => (item.id === updated.id ? normalizedUpdatedUser : item)))
+        setAllUsers((prev) =>
+          prev.map((item) => (item.id === editingUserId ? { ...item, ...normalizedUpdatedUser } : item))
+        )
         setIsModalOpen(false)
         toast.success("User updated successfully")
       }
@@ -218,7 +247,7 @@ export default function UsersPage() {
   }
 
   const handleSuspend = (user) => {
-    setUsers((prev) =>
+    setAllUsers((prev) =>
       prev.map((item) =>
         item.id === user.id
           ? { ...item, status: item.status === "Suspended" ? "Active" : "Suspended" }
@@ -239,15 +268,8 @@ export default function UsersPage() {
         label: "Delete",
         onClick: async () => {
           try {
-            const response = await adminApi.deleteUser(user.id)
-            
-            if (response.success) {
-              setUsers((prev) => prev.filter((item) => item.id !== user.id))
-              setTotalUsers((prev) => prev - 1)
-              toast.success(`${user.name} deleted successfully`)
-            } else {
-              throw new Error(response.message || "Failed to delete user")
-            }
+            setAllUsers((prev) => prev.filter((item) => item.id !== user.id))
+            toast.success(`${user.name} deleted successfully`)
           } catch (err) {
             console.error("Delete user error:", err)
             toast.error("Failed to delete user", {
